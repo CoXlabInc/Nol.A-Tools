@@ -65,14 +65,22 @@ def sendMessage(ser, data, waitTime):
         print(f"No ack: {r}", file=sys.stderr)
         return None
 
+def sendGetEui64(ser):
+    msg = bytearray(b'\x1c')
+    resp = sendMessage(ser, msg, 1)
+    if resp is not None and len(resp) == 9 and resp[0] == 0x3A:
+        return resp[1:]
+    else:
+        return None
+    
 def sendMassErase(ser):
-   msg = bytearray(b'\x15')
-   resp = sendMessage(ser, msg, 1)
-   if resp == b'\x3B\x00':
-       print("Mass erase done")
-       return True
-   else:
-       return False
+    msg = bytearray(b'\x15')
+    resp = sendMessage(ser, msg, 1)
+    if resp == b'\x3B\x00':
+        print("Mass erase done")
+        return True
+    else:
+        return False
 
 def sendDataBlock(ser, addr, data):
     msg = bytearray(b'\x10')
@@ -102,8 +110,11 @@ def sendCRCCheck(ser, addr, length):
     else:
         return None
 
-def sendReset(ser):
+def sendReset(ser, eui=None):
     msg = bytearray(b'\x17')
+    if eui is not None:
+        msg += eui
+    print(len(msg))
     resp = sendMessage(ser, msg, 3)
     #print('sendReset<', ' '.join("%02x" % b for b in resp))
     if resp == b'\x3B\x00':
@@ -113,9 +124,17 @@ def sendReset(ser):
 
 def main():
     parser = argparse.ArgumentParser(description='Nol.ja flasher version 0.6 for Nol.A supported boards.')
-    parser.add_argument('serial', nargs='?', help='a serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
-    parser.add_argument('--flash', type=argparse.FileType('rb'), nargs='?', help='a binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)')
+    parser.add_argument('serial', nargs='?', help='A serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
+    parser.add_argument('--flash', type=argparse.FileType('rb'), nargs=1, help='A binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='bin file')
+    parser.add_argument('--eui', nargs=1, help='Set the new EUI-64. The EUI-64 must be a 64-bit hexadecimal format. (e.g., 0011223344556677)', metavar='EUI-64')
     args = parser.parse_args()
+
+    if args.eui is not None:
+        new_eui = bytearray.fromhex(args.eui[0])
+        if len(new_eui) != 8:
+            new_eui = None
+    else:
+        new_eui = None    
 
     try:
         ser = serial.Serial(port=args.serial,
@@ -129,53 +148,70 @@ def main():
         parser.print_help()
         return 1
 
-    image = args.flash.read()
+    eui = sendGetEui64(ser)
+    if eui == None:
+        print("* Getting EUI-64 failed", file=sys.stderr)
+        return 2
+    
+    print(f"* EUI-64: {eui[0]:02X}-{eui[1]:02X}-{eui[2]:02X}-{eui[3]:02X}-{eui[4]:02X}-{eui[5]:02X}-{eui[6]:02X}-{eui[7]:02X}")
 
-    print('Erasing...')
-    if sendMassErase(ser) == False:
-        print("* Mass erase failed", file=sys.stderr)
-        return 3
+    if args.flash != None:
+        image = args.flash[0].read()
 
-    addr = 0
-    printed = 0
+        print('Erasing...')
+        if sendMassErase(ser) == False:
+            print("* Mass erase failed", file=sys.stderr)
+            return 3
 
-    while True:
-        block = image[addr : min(addr+256, len(image))]
+        addr = 0
+        printed = 0
 
-        if sendDataBlock(ser, addr, block) == False:
-            print('* Communication Error', file=sys.stderr)
-            return 4
+        while True:
+            block = image[addr : min(addr+256, len(image))]
 
-        addr += len(block)
+            if sendDataBlock(ser, addr, block) == False:
+                print('* Communication Error', file=sys.stderr)
+                return 4
 
-        while printed > 0:
-            print(' ', end='')
-            printed -= 1
-            print(end='\r')
+            addr += len(block)
 
-        p = 'Flashing: %.2f %% (%u / %u)' % (addr * 100. / len(image), addr, len(image))
-        printed = len(p)
-        print(p, end='\r', flush=True)
+            while printed > 0:
+                print(' ', end='')
+                printed -= 1
+                print(end='\r')
 
-        if addr >= len(image):
-            break
+            p = '* Flashing: %.2f %% (%u / %u)' % (addr * 100. / len(image), addr, len(image))
+            printed = len(p)
+            print(p, end='\r', flush=True)
 
-    print('\nFlashing done')
+            if addr >= len(image):
+                break
 
-    devCrc = sendCRCCheck(ser, 0, len(image))
-    myCrc = binascii.crc_hqx(image, 0xFFFF)
+        print('\n  Flashing done')
 
-    if myCrc != devCrc:
-        print('Integrity check failed.', file=sys.stderr)
-        print('CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
-        return 5
+        devCrc = sendCRCCheck(ser, 0, len(image))
+        myCrc = binascii.crc_hqx(image, 0xFFFF)
 
-    print('Integrity check passed.')
+        if myCrc != devCrc:
+            print('* Integrity check failed.', file=sys.stderr)
+            print('  CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
+            return 5
 
-    if sendReset(ser) == True:
-        ser.close()
-        return 0
-    else:
-        print('Reset error', file=sys.stderr)
-        ser.close()
-        return 6
+        print('* Integrity check passed.')
+
+    if args.flash != None or new_eui is not None:
+        if new_eui == None:
+            print('* Resetting...')
+            result = sendReset(ser)
+        else:
+            print(f'* Resetting with new EUI-64 {new_eui[0]:02X}-{new_eui[1]:02X}-{new_eui[2]:02X}-{new_eui[3]:02X}-{new_eui[4]:02X}-{new_eui[5]:02X}-{new_eui[6]:02X}-{new_eui[7]:02X} ...')
+            result = sendReset(ser, new_eui)
+
+        if result == True:
+            print('  Reset done')
+        else:
+            print('  Reset error', file=sys.stderr)
+            return 6
+            
+    ser.close()
+    return 0
