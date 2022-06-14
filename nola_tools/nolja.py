@@ -114,82 +114,79 @@ def sendReset(ser):
 def printUsage():
     print('* Usage: %s {serial port} {binary file}' % sys.argv[0])
 
-print('Nol.ja flasher version 0.6 for Nol.A supported boards.')
+def main():
+    print('Nol.ja flasher version 0.6 for Nol.A supported boards.')
 
-if len(sys.argv) != 3:
-    printUsage()
-    sys.exit(3)
+    if len(sys.argv) != 3:
+        printUsage()
+        return 3
 
-try:
-    ser = serial.Serial(
-        port=sys.argv[1],
-        baudrate=115200,
-        parity=serial.PARITY_NONE,
-        stopbits=serial.STOPBITS_ONE,
-        bytesize=serial.EIGHTBITS,
-        timeout=2)
+    try:
+        ser = serial.Serial(port=sys.argv[1],
+                            baudrate=115200,
+                            parity=serial.PARITY_NONE,
+                            stopbits=serial.STOPBITS_ONE,
+                            bytesize=serial.EIGHTBITS,
+                            timeout=2)
+    except serial.SerialException:
+        print('* Cannot open port.', file=sys.stderr)
+        printUsage()
+        return 1
 
-except serial.SerialException:
-    print('* Cannot open port.', file=sys.stderr)
-    printUsage()
-    sys.exit(1)
+    try:
+        f = open(sys.argv[2], 'rb')
+        image = f.read()
+        f.close()
+    except IOError:
+        print('* Cannot open file.', file=sys.stderr)
+        printUsage()
+        return 2
 
-try:
-    f = open(sys.argv[2], 'rb')
-    image = f.read()
-    f.close()
+    print('Erasing...')
+    if sendMassErase(ser) == False:
+        print("* Mass erase failed", file=sys.stderr)
+        return 3
 
-except IOError:
-    print('* Cannot open file.', file=sys.stderr)
-    printUsage()
-    sys.exit(2)
+    addr = 0
+    printed = 0
 
-print('Erasing...')
-if sendMassErase(ser) == False:
-    print("* Mass erase failed", file=sys.stderr)
-    sys.exit(3)
+    while True:
+        block = image[addr : min(addr+256, len(image))]
 
-addr = 0
-printed = 0
+        if sendDataBlock(ser, addr, block) == False:
+            print('* Communication Error', file=sys.stderr)
+            return 4
 
-while True:
-    block = image[addr : min(addr+256, len(image))]
+        addr += len(block)
 
-    if sendDataBlock(ser, addr, block) == False:
-        print('* Communication Error', file=sys.stderr)
-        sys.exit(4)
+        while printed > 0:
+            print(' ', end='')
+            printed -= 1
+            print(end='\r')
 
-    addr += len(block)
+        p = 'Flashing: %.2f %% (%u / %u)' % (addr * 100. / len(image), addr, len(image))
+        printed = len(p)
+        print(p, end='\r', flush=True)
 
-    while printed > 0:
-        print(' ', end='')
-        printed -= 1
-    print(end='\r')
+        if addr >= len(image):
+            break
 
-    p = 'Flashing: %.2f %% (%u / %u)' % (addr * 100. / len(image), addr, len(image))
-    printed = len(p)
-    print(p, end='\r', flush=True)
+    print('\nFlashing done')
 
-    if addr >= len(image):
-        break
+    devCrc = sendCRCCheck(ser, 0, len(image))
+    myCrc = binascii.crc_hqx(image, 0xFFFF)
 
-print('\nFlashing done')
+    if myCrc != devCrc:
+        print('Integrity check failed.', file=sys.stderr)
+        print('CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
+        return 5
 
-devCrc = sendCRCCheck(ser, 0, len(image))
-myCrc = binascii.crc_hqx(image, 0xFFFF)
+    print('Integrity check passed.')
 
-
-if myCrc != devCrc:
-    print('Integrity check failed.', file=sys.stderr)
-    print('CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
-    sys.exit(5)
-
-print('Integrity check passed.')
-
-if sendReset(ser) == True:
-    ser.close()
-    sys.exit(0)
-else:
-    print('Reset error', file=sys.stderr)
-    ser.close()
-    sys.exit(-1)
+    if sendReset(ser) == True:
+        ser.close()
+        return 0
+    else:
+        print('Reset error', file=sys.stderr)
+        ser.close()
+        return 6
