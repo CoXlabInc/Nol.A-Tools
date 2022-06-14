@@ -6,7 +6,7 @@ with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
 setuptools.setup(name="nola-tools",
-                 version="0.1.0",
+                 version="0.1.1",
                  author="CoXlab Inc.",
                  author_email="support@coxlab.kr",
                  description="Nol.A SDK Command Line Interface for IoT Device Firmware Development",

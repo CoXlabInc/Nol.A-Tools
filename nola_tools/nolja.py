@@ -149,7 +149,6 @@ def main():
                             stopbits=serial.STOPBITS_ONE,
                             bytesize=serial.EIGHTBITS,
                             timeout=2)
-        ser.open()
     except serial.SerialException:
         print('* Cannot open port.', file=sys.stderr)
         parser.print_help()
@@ -222,3 +221,8 @@ def main():
             
     ser.close()
     return 0
+
+
+if __name__ == "__main__":
+    main()
+
