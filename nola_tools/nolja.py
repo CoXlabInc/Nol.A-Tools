@@ -126,13 +126,19 @@ def main():
     parser = argparse.ArgumentParser(description='Nol.ja flasher version 0.6 for Nol.A supported boards.')
     parser.add_argument('serial', nargs='?', help='A serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
     parser.add_argument('--flash', type=argparse.FileType('rb'), nargs=1, help='A binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='bin file')
-    parser.add_argument('--eui', nargs=1, help='Set the new EUI-64. The EUI-64 must be a 64-bit hexadecimal format. (e.g., 0011223344556677)', metavar='EUI-64')
+    parser.add_argument('--eui', nargs=1, help='Set the new EUI-64. The EUI-64 must be a 64-bit hexadecimal string. (e.g., 0011223344556677)', metavar='EUI-64')
     args = parser.parse_args()
 
+    if args.serial == None:
+        print('* A serial port must be specified.', file=sys.stderr)
+        parser.print_help()
+        return 1
+    
     if args.eui is not None:
         new_eui = bytearray.fromhex(args.eui[0])
         if len(new_eui) != 8:
-            new_eui = None
+            print('* Invalid EUI-64.', file=sys.stderr)
+            return 1
     else:
         new_eui = None    
 
@@ -143,6 +149,7 @@ def main():
                             stopbits=serial.STOPBITS_ONE,
                             bytesize=serial.EIGHTBITS,
                             timeout=2)
+        ser.open()
     except serial.SerialException:
         print('* Cannot open port.', file=sys.stderr)
         parser.print_help()
