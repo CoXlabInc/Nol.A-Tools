@@ -1,7 +1,7 @@
 import sys
-import time
 import serial
 import binascii
+import argparse
 
 def receiveMessage(ser):
     garbage = bytearray(b'')
@@ -111,18 +111,14 @@ def sendReset(ser):
     else:
         return False
 
-def printUsage():
-    print('* Usage: %s {serial port} {binary file}' % sys.argv[0])
-
 def main():
-    print('Nol.ja flasher version 0.6 for Nol.A supported boards.')
-
-    if len(sys.argv) != 3:
-        printUsage()
-        return 3
+    parser = argparse.ArgumentParser(description='Nol.ja flasher version 0.6 for Nol.A supported boards.')
+    parser.add_argument('serial', nargs='?', help='a serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
+    parser.add_argument('--flash', type=argparse.FileType('rb'), nargs='?', help='a binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)')
+    args = parser.parse_args()
 
     try:
-        ser = serial.Serial(port=sys.argv[1],
+        ser = serial.Serial(port=args.serial,
                             baudrate=115200,
                             parity=serial.PARITY_NONE,
                             stopbits=serial.STOPBITS_ONE,
@@ -130,17 +126,10 @@ def main():
                             timeout=2)
     except serial.SerialException:
         print('* Cannot open port.', file=sys.stderr)
-        printUsage()
+        parser.print_help()
         return 1
 
-    try:
-        f = open(sys.argv[2], 'rb')
-        image = f.read()
-        f.close()
-    except IOError:
-        print('* Cannot open file.', file=sys.stderr)
-        printUsage()
-        return 2
+    image = args.flash.read()
 
     print('Erasing...')
     if sendMassErase(ser) == False:
