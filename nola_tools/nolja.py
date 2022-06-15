@@ -114,7 +114,6 @@ def sendReset(ser, eui=None):
     msg = bytearray(b'\x17')
     if eui is not None:
         msg += eui
-    print(len(msg))
     resp = sendMessage(ser, msg, 3)
     #print('sendReset<', ' '.join("%02x" % b for b in resp))
     if resp == b'\x3B\x00':
