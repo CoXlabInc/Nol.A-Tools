@@ -77,7 +77,6 @@ def sendMassErase(ser):
     msg = bytearray(b'\x15')
     resp = sendMessage(ser, msg, 1)
     if resp == b'\x3B\x00':
-        print("Mass erase done")
         return True
     else:
         return False
@@ -163,10 +162,11 @@ def main():
     if args.flash != None:
         image = args.flash[0].read()
 
-        print('Erasing...')
+        print('* Mass erasing...')
         if sendMassErase(ser) == False:
-            print("* Mass erase failed", file=sys.stderr)
+            print(" Mass erase failed", file=sys.stderr)
             return 3
+        print("  Mass erase done")
 
         addr = 0
         printed = 0
