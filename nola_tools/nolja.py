@@ -2,6 +2,7 @@ import sys
 import serial
 import binascii
 import argparse
+from pbr.version import VersionInfo
 
 def receiveMessage(ser):
     garbage = bytearray(b'')
@@ -121,7 +122,7 @@ def sendReset(ser, eui=None):
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description='Nol.ja flasher version 0.6 for Nol.A supported boards.')
+    parser = argparse.ArgumentParser(description=f"Nol.ja flasher for boards supported by Nol.A version {VersionInfo('nola_tools').release_string()}")
     parser.add_argument('serial', nargs='?', help='A serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
     parser.add_argument('--flash', type=argparse.FileType('rb'), nargs=1, help='A binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='bin file')
     parser.add_argument('--eui', nargs=1, help='Set the new EUI-64. The EUI-64 must be a 64-bit hexadecimal string. (e.g., 0011223344556677)', metavar='EUI-64')
