@@ -63,7 +63,7 @@ def login(user, token):
     elif os.path.isfile(repo_dir):
         os.remove(repo_dir)
     
-    repo = git.Repo.clone_from('https://github.com/CoXlabInc/Nol.A-Tools.git', repo_dir)
+    repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git", repo_dir, env={"GIT_SSH_COMMAND": f"ssh -i {os.path.join(homedir, 'key')} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"})
     if repo is not None:
         return True
     else:
