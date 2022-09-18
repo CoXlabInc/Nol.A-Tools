@@ -13,7 +13,7 @@ import shutil
 import git
 
 from .build import build
-from .repo import clone, get_versions, checkout, update
+from .repo import clone, get_versions, get_current_version, checkout, update
 
 homedir = os.path.join(os.path.expanduser('~'), '.nola')
 os.makedirs(homedir, exist_ok=True)
@@ -59,7 +59,7 @@ def info():
     print(f"Avilable versions: {versions}")
 
     if 'libnola' in config:
-        print(f"libnola: {config['libnola']}")
+        print(f"libnola under development: {config['libnola']} ({get_current_version(os.path.join(config['libnola'], 'nola-sdk'))})")
     return 0
 
 def login(user, token):
@@ -98,7 +98,10 @@ def logout():
 
 def devmode(path_to_libnola):
     config = load_config()
-    config['libnola'] = os.path.expanduser(path_to_libnola)
+    if path_to_libnola == '':
+        del config['libnola']
+    else:
+        config['libnola'] = os.path.expanduser(path_to_libnola)
     save_config(config)
     
 def main():
