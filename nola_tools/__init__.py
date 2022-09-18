@@ -12,12 +12,17 @@ import json
 import shutil
 import git
 
+from .build import build
+from .repo import clone, get_versions, checkout, update
+
 homedir = os.path.join(os.path.expanduser('~'), '.nola')
 os.makedirs(homedir, exist_ok=True)
 
+# TODO Clone the public library.
+
 def load_config():
     config_file = os.path.join(homedir, 'config.json')
-    config = None
+    config = {}
     if os.path.exists(config_file):
         with open(config_file) as f:
             config = json.load(f)
@@ -39,104 +44,41 @@ def set_key(token):
         f.write("\n-----END OPENSSH PRIVATE KEY-----\n")
     os.chmod(key_file, 0o400)
 
-def get_latest_version(A, B):
-    a = A.split('.')
-    b = B.split('.')
-    if a[0] == b[0]:
-        if a[1] == b[1]:
-            if a[2] == b[2]:
-                return None
-            else:
-                return A if (a[2] > b[2]) else B
-        else:
-            return A if (a[1] > b[1]) else B
-    else:
-        return A if (a[0] > b[0]) else B
-    
-def checkout(version=None):
-    repo = git.Repo(os.path.join(homedir, 'repo'))
-
-    if version is not None:
-        if version in [v.name for v in repo.tags]:
-            print(f"* Checking out the version '{version}'...")
-            repo.head.reset(f"refs/tags/{version}", working_tree=True)
-            return True
-        else:
-            print(f"* The version '{version}' is not found.")
-            return False
-        
-    latest = None
-    for v in repo.tags:
-        if latest is None:
-            latest = v.name
-        else:
-            new_one = get_latest_version(latest, v.name)
-            if new_one is not None:
-                latest = new_one
-
-    print(f"* Checking out the latest version '{latest}'")
-    repo.head.reset(f"refs/tags/{latest}", working_tree=True)
-    return True
-    
 def info():
     print(f"* Nol.A-SDK Command Line Interface v{__version__}")
 
     config = load_config()
-    if config is None:
-        user = None
-    else:
+    if 'user' in config:
         user = config['user']
+    else:
+        user = None
     print(f"User: {user}")
 
-    try:
-        repo = git.Repo(os.path.join(homedir, 'repo'))
+    current_version, versions = get_versions(os.path.join(homedir, 'repo'))
+    print(f"Current version: {current_version}")
+    print(f"Avilable versions: {versions}")
 
-        current_version = repo.head.commit
-        versions = []
-        for v in repo.tags:
-            versions.append(v.name)
-            if repo.head.commit == v.commit:
-                current_version = v.name
-        print(f"Current version: {current_version}")
-        print(f"Avilable versions: {versions}")
-    except git.exc.NoSuchPathError:
-        print(f"Library repository not found")
-
-    # TODO Read Nol.A-project.json.
+    if 'libnola' in config:
+        print(f"libnola: {config['libnola']}")
     return 0
 
 def login(user, token):
     #print(f"Login user:{user}, token:{token}")
 
-    config = load_config()
-    if config is None:
-        config = {}
-    
+    config = load_config()    
     config['user'] = user
-    save_config(config)
     set_key(token)
 
-    repo_dir = os.path.join(homedir, 'repo')
-    if os.path.exists(repo_dir):
-        shutil.rmtree(repo_dir)
-
-    try:
-        repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git",
-                                   repo_dir,
-                                   env={"GIT_SSH_COMMAND": f"ssh -i {os.path.join(homedir, 'key')} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"})
-    except git.exc.GitCommandError:
-        print(f"* Cloning repositry error")
+    if clone(os.path.join(homedir, 'repo'), user):
+        save_config(config)
+        return checkout(os.path.join(homedir, 'repo'))
+    else:
         return False
-    
-    return checkout()
-
 
 def logout():
-    config_file = os.path.join(homedir, 'config.json')
-    if os.path.isfile(config_file):
-        os.remove(config_file)
-    elif os.path.isdir(config_file):
-        shutil.rmtree(config_file)
+    config = load_config()
+    del config['user']
+    save_config(config)
 
     key_file = os.path.join(homedir, 'key')
     if os.path.isfile(key_file):
@@ -150,35 +92,18 @@ def logout():
     elif os.path.isfile(repo_dir):
         os.remove(repo_dir)
 
+    # TODO Clone the public library.
+    
     return True
-    
-def update():
-    repo = git.Repo(os.path.join(homedir, 'repo'))
-    existing_versions = [t.name for t in repo.tags]
-    
-    result = git.Remote(repo, 'origin').fetch()
-    if result[0].flags & git.remote.FetchInfo.ERROR != 0:
-        print("* ERROR on update")
 
-    if result[0].flags & git.remote.FetchInfo.REJECTED != 0:
-        print("* REJECTED on update")
-
-    if result[0].flags & git.remote.FetchInfo.NEW_TAG != 0:
-        avilable_versions = [t.name for t in repo.tags]
-        new_versions = []
-        for a in avilable_versions:
-            if a not in existing_versions:
-                new_versions.append(a)
-                
-        print(f"* New version(s) avilable: {new_versions}")
-        print(f"* Change the version by 'checkout' command")
-
-    if result[0].flags & git.remote.FetchInfo.HEAD_UPTODATE:
-        print("* Up to date")
+def devmode(path_to_libnola):
+    config = load_config()
+    config['libnola'] = os.path.expanduser(path_to_libnola)
+    save_config(config)
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
-    parser.add_argument('command', nargs='?', help='info, checkout[={version}], login={user}:{token}, logout, update')
+    parser.add_argument('command', nargs='?', help='info, build[={board}], checkout[={version}], login={user}:{token}, logout, update, devmode={path to libnola source tree}')
     args = parser.parse_args()
 
     if args.command is None:
@@ -187,16 +112,25 @@ def main():
         return 1
     elif args.command == "info":
         return info()
+    elif args.command.startswith("build"):
+        if len(args.command) < 6:
+            return build(load_config())
+        elif args.command[5] != "=":
+            print("* Use 'build=[board name]' to change the board", file=sys.stderr)
+            parse.print_help()
+            return 1
+        else:
+            return build(load_config(), args.command[6:])
     elif args.command.startswith("checkout"):
         if len(args.command) < 9:
             print("* Checking out the latest version...")
-            return checkout()
+            return checkout(os.path.join(homedir, 'repo'))
         elif args.command[8] != "=":
             print("* Use 'checkout=[version]' to specify the version", file=sys.stderr)
             parse.print_help()
             return 1
         else:
-            return checkout(args.command[9:])
+            return checkout(os.path.join(homedir, 'repo'), args.command[9:])
     elif args.command.startswith("login"):
         if len(args.command) < 6 or args.command[5] != "=":
             print("* 'login' command requires both user and token parameters", file=sys.stderr)
@@ -220,7 +154,13 @@ def main():
         print(f"* Logged out successfully.")
 
     elif args.command == "update":
-        return update()
+        return update(os.path.join(homedir, 'repo'))
+    elif args.command.startswith('devmode'):
+        if len(args.command) < 8 or args.command[7] != "=":
+            print(" * 'devmode' command requires libnola path", file=sys.stderr)
+            parser.print_help()
+            return 1
+        devmode(args.command[8:])
     else:
         print("* Unknown command", file=sys.stderr)
         parser.print_help()
