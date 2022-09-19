@@ -3,6 +3,8 @@ import os
 import shutil
 import git
 
+homedir = os.path.join(os.path.expanduser('~'), '.nola')
+
 def clone(repo_dir, user):
     if os.path.exists(repo_dir):
         shutil.rmtree(repo_dir)

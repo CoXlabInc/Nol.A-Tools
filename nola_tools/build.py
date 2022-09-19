@@ -94,8 +94,10 @@ def build(config, board=None):
     command_args = ['make', '--no-print-directory',
                     '-C', build_dir,
                     '-f', os.path.join(repo_dir, 'make', 'Makefile')]
-    print(f"* Project options: {project['options']}")
-    command_args += project['options'].split(' ')
+
+    if 'options' in project:
+        print(f"* Project options: {project['options']}")
+        command_args += project['options'].split(' ')
 
     if 'def' in project:
         for d in project['def'].split(' '):
