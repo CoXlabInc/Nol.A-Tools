@@ -2,6 +2,6 @@
 
 import setuptools
 
-setuptools.setup(setup_requires=['pbr'],
+setuptools.setup(setup_requires=['pbr', 'GitPython'],
                  pbr=True,
 )
