@@ -17,14 +17,16 @@ def clone(repo_dir, user):
     except git.exc.GitCommandError:
         print(f"* Cloning repositry error", file=sys.stderr)
         return False
-    
+
 def get_versions(repo_dir):
     return get_current_version(repo_dir), get_available_versions(repo_dir)
 
 def get_current_version(repo_dir):
+    assert os.path.exists(repo_dir), "'login' is required."
     return git.cmd.Git(repo_dir).describe('--tags')
 
 def get_available_versions(repo_dir):
+    assert os.path.exists(repo_dir), "'login' is required."
     return [v.name for v in git.Repo(repo_dir).tags]
 
 def get_latest_version(A, B):
@@ -42,6 +44,8 @@ def get_latest_version(A, B):
         return A if (a[0] > b[0]) else B
 
 def checkout(repo_dir, version=None):
+    assert os.path.exists(repo_dir), "'login' is required."
+
     repo = git.Repo(repo_dir)
 
     if version is not None:
@@ -68,6 +72,8 @@ def checkout(repo_dir, version=None):
     return True
     
 def update(repo_dir):
+    assert os.path.exists(repo_dir), "'login' is required."
+
     repo = git.Repo(repo_dir)
     existing_versions = [t.name for t in repo.tags]
     
