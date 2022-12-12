@@ -4,7 +4,10 @@ import json
 import shutil
 import glob
 import subprocess
-
+import platform
+import time
+from queue import Queue, Empty
+from threading import Thread
 from .repo import get_current_version
 
 def supported_boards(repo_dir):
@@ -25,19 +28,45 @@ def build(config, board=None):
         project['board'] = board
 
     if 'libnola' in config:
-        make_process = subprocess.Popen(['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"],
+        ON_POSIX = 'posix' in sys.builtin_module_names
+
+        command = ['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"]
+        make_process = subprocess.Popen(command,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE,
-                                        env=os.environ)
-        os.set_blocking(make_process.stdout.fileno(), False)
-        os.set_blocking(make_process.stderr.fileno(), False)
+                                        env=os.environ,
+                                        close_fds=ON_POSIX)
+
+        def enqueue(out, queue):
+            for line in iter(out.readline, b''):
+                queue.put(line)
+            out.close()
+
+        q_out = Queue()
+        t_out = Thread(target=enqueue, args=(make_process.stdout, q_out))
+        t_out.daemon = True
+        t_out.start()
+        
+        q_err = Queue()
+        t_err = Thread(target=enqueue, args=(make_process.stderr, q_err))
+        t_err.daemon = True
+        t_err.start()
+        
         while True:
-            output = make_process.stdout.readline()
-            if len(output) > 0:
-                print(output.decode(), end='')
-            error = make_process.stderr.readline()
-            if len(error) > 0:
-                print(error.decode(), end='', file=sys.stderr)
+            try:
+                line = q_out.get_nowait()
+                if line:
+                    print(line.decode('utf-8').rstrip())
+            except Empty:
+                pass
+
+            try:
+                line = q_err.get_nowait()
+                if line:
+                    print(line.decode('utf-8').rstrip())
+            except Empty:
+                pass
+
             ret_code = make_process.poll()
             if ret_code is not None:
                 break
