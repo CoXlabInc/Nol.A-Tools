@@ -49,7 +49,7 @@ def build(config, board=None):
             cwd_wsl = "/mnt/" + cwd[0].lower() + cwd[2:].replace("\\", "/")
             print(cwd_wsl)
             
-            command = ['wsl', '-d', dist, '--cd', cwd_wsl, 'python3', '-m', 'nola_tools.__init__', 'build']
+            command = ['wsl', '-d', dist, '--cd', cwd_wsl, 'python3', '-u', '-m', 'nola_tools.__init__', 'build']
         else:
             command = ['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"]
         make_process = subprocess.Popen(command,
