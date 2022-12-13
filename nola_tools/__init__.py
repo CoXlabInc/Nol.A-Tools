@@ -59,7 +59,7 @@ def info():
     print(f"Avilable versions: {versions}")
 
     if 'libnola' in config:
-        print(f"libnola under development: {config['libnola']} ({get_current_version(os.path.join(config['libnola'], 'nola-sdk'))})")
+        print(f"libnola under development: {config['libnola']}")
     return 0
 
 def login(user, token):

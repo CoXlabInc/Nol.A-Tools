@@ -6,6 +6,7 @@ import glob
 import subprocess
 import platform
 import time
+import locale
 from queue import Queue, Empty
 from threading import Thread
 from .repo import get_current_version
@@ -30,7 +31,27 @@ def build(config, board=None):
     if 'libnola' in config:
         ON_POSIX = 'posix' in sys.builtin_module_names
 
-        command = ['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"]
+        if config['libnola'].startswith('wsl://'):
+            sep = config['libnola'][6:].find('/')
+            dist = config['libnola'][6:6+sep]
+            src_dir = config['libnola'][6+sep:]
+
+            command = ['wsl', '-d', dist, 'python3', '-m', 'nola_tools.__init__', f"devmode={src_dir}"]
+            with subprocess.Popen(command,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  env=os.environ,
+                                  close_fds=ON_POSIX) as p:
+                ret_code = p.wait()
+            print(f"command: {command}, ret: {ret_code}")
+
+            cwd = os.getcwd()
+            cwd_wsl = "/mnt/" + cwd[0].lower() + cwd[2:].replace("\\", "/")
+            print(cwd_wsl)
+            
+            command = ['wsl', '-d', dist, '--cd', cwd_wsl, 'python3', '-m', 'nola_tools.__init__', 'build']
+        else:
+            command = ['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"]
         make_process = subprocess.Popen(command,
                                         stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE,
@@ -56,21 +77,24 @@ def build(config, board=None):
             try:
                 line = q_out.get_nowait()
                 if line:
-                    print(line.decode('utf-8').rstrip())
+                    print(line.decode(locale.getpreferredencoding()).rstrip())
             except Empty:
                 pass
 
             try:
                 line = q_err.get_nowait()
                 if line:
-                    print(line.decode('utf-8').rstrip())
+                    print(line.decode(locale.getpreferredencoding()).rstrip())
             except Empty:
                 pass
 
             ret_code = make_process.poll()
             if ret_code is not None:
                 break
-
+ 
+        if config['libnola'].startswith('wsl://'):
+            return ret_code
+        
         if ret_code != 0:
             print(f"* Building libnola failed ({ret_code})", file=sys.stderr)
             return False
