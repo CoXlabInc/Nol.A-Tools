@@ -43,7 +43,6 @@ def build(config, board=None):
                                   env=os.environ,
                                   close_fds=ON_POSIX) as p:
                 ret_code = p.wait()
-            print(f"command: {command}, ret: {ret_code}")
 
             cwd = os.getcwd()
             cwd_wsl = "/mnt/" + cwd[0].lower() + cwd[2:].replace("\\", "/")
