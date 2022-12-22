@@ -10,6 +10,7 @@ import locale
 from queue import Queue, Empty
 from threading import Thread
 from .repo import get_current_version
+from .utils import config_file
 
 def supported_boards(repo_dir):
     for d in os.listdir(repo_dir):
@@ -22,8 +23,7 @@ def build(config, board=None):
         print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
         return False
 
-    with open("Nol.A-project.json") as f:
-        project = json.load(f)
+    project = config_file.load("Nol.A-project.json")
 
     if board is not None:
         project['board'] = board
@@ -112,28 +112,20 @@ def build(config, board=None):
     with open("Nol.A-project.json", 'w', encoding='utf-8') as f:
         json.dump(project, f, indent=4)
 
-    current_version = get_current_version(repo_dir)
-    print(f"* Current version: {current_version} {'(dev)' if 'libnola' in config else ''}")
+    current_version = get_current_version(repo_dir) + '(dev)' if 'libnola' in config else ''
+    print(f"* Current version: {current_version}")
 
     build_dir = os.path.join('build', project['board'])
     if 'libnola' in config and os.path.exists(build_dir):
         # If in development mode, always clean before make.
         shutil.rmtree(build_dir)
-        
-    last_build_context_file = os.path.join(build_dir, 'build.json')
-    if os.path.exists(last_build_context_file):
-        with open(last_build_context_file) as f:
-            last_build_context = json.load(f)
-        if 'ver' in last_build_context:
-            print(f"* Last used library version: {last_build_context['ver']}")
-            if last_build_context['ver'] != current_version and os.path.exists(build_dir):
-                shutil.rmtree(build_dir)
 
-    # (Windows) make.exe exists?
+    last_build_context = config_file.load(os.path.join(build_dir, 'build.json'))
 
-    # (Windows) Hardware library development mode? -> not supported.
-
-    # (Non Windows) Hardware library development mode?
+    if 'ver' in last_build_context:
+        print(f"* Last used library version: {last_build_context['ver']}")
+        if last_build_context['ver'] != current_version and os.path.exists(build_dir):
+            shutil.rmtree(build_dir)
 
     os.makedirs(build_dir, exist_ok=True)
 
@@ -163,7 +155,7 @@ def build(config, board=None):
         definitions = ''
 
     current_versions = current_version.split('.')
-    command_args.append(f"DEF={definitions}NOLA_VER_MAJOR={current_versions[0]} NOLA_VER_MINOR={current_versions[1]} NOLA_VER_PATCH={current_versions[2]}")
+    command_args.append(f"DEF={definitions}NOLA_VER_MAJOR={current_versions[0]} NOLA_VER_MINOR={current_versions[1]} NOLA_VER_PATCH={current_versions[2].split('(')[0]}")
 
     env = os.environ
     env['PWD'] = os.path.join(repo_dir, 'make')
@@ -187,4 +179,39 @@ def build(config, board=None):
         if ret_code is not None:
             break
 
-    return True if ret_code == 0 else False
+    last_build_context['ver'] = current_version
+    config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
+    
+    return ret_code == 0
+
+def flash(interface=None):
+    if os.path.exists('Nol.A-project.json') == False:
+        print("* Do 'build' under the Nol.A project directory.", file=sys.stderr)
+        print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
+        return False
+
+    project = config_file.load("Nol.A-project.json")
+
+    if project.get('board') is None:
+        print("* No board is configured. If you want to start a new project, use 'new' command.", file=sys.stderr)
+        return False
+
+    build_dir = os.path.join('build', project['board'])
+    if os.path.exists(build_dir) == False:
+        print("* Do 'build' first.", file=sys.stderr)
+        return False
+
+    last_build_context = config_file.load(os.path.join(build_dir, 'build.json'))
+
+    if interface is None:
+        interface = last_build_context.get('interface')
+
+    if interface is None:
+        print("* No interface is specified. Use 'flash={interface name}'.", file=sys.stderr)
+        return False
+
+    # TODO make flash
+
+    last_build_context['interface'] = interface
+    config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
+    return True

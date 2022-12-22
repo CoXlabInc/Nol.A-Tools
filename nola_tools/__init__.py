@@ -12,7 +12,8 @@ import json
 import shutil
 import git
 
-from .build import build
+from .utils import config_file
+from .build import build, flash
 from .repo import clone, get_versions, get_current_version, checkout, update
 
 homedir = os.path.join(os.path.expanduser('~'), '.nola')
@@ -20,19 +21,6 @@ os.makedirs(homedir, exist_ok=True)
 
 # TODO Clone the public library.
 
-def load_config():
-    config_file = os.path.join(homedir, 'config.json')
-    config = {}
-    if os.path.exists(config_file):
-        with open(config_file) as f:
-            config = json.load(f)
-    return config
-
-def save_config(config):
-    config_file = os.path.join(homedir, 'config.json')
-    with open(config_file, 'w', encoding='utf-8') as f:
-        json.dump(config, f)
-        
 def set_key(token):
     key_file = os.path.join(homedir, 'key')
 
@@ -47,7 +35,7 @@ def set_key(token):
 def info():
     print(f"* Nol.A-SDK Command Line Interface v{__version__}")
 
-    config = load_config()
+    config = config_file.load(os.path.join(homedir, 'config.json'))
     if 'user' in config:
         user = config['user']
     else:
@@ -65,20 +53,20 @@ def info():
 def login(user, token):
     #print(f"Login user:{user}, token:{token}")
 
-    config = load_config()    
+    config = config_file.load(os.path.join(homedir, 'config.json'))
     config['user'] = user
     set_key(token)
 
     if clone(os.path.join(homedir, 'repo'), user):
-        save_config(config)
+        config_file.save(config, os.path.join(homedir, 'config.json'))
         return checkout(os.path.join(homedir, 'repo'))
     else:
         return False
 
 def logout():
-    config = load_config()
+    config = config_file.load(os.path.join(homedir, 'config.json'))
     del config['user']
-    save_config(config)
+    config_file.save(config, os.path.join(homedir, 'config.json'))
 
     key_file = os.path.join(homedir, 'key')
     if os.path.isfile(key_file):
@@ -97,12 +85,12 @@ def logout():
     return True
 
 def devmode(path_to_libnola):
-    config = load_config()
+    config = config_file.load(os.path.join(homedir, 'config.json'))
     if path_to_libnola == '':
         del config['libnola']
     else:
         config['libnola'] = os.path.expanduser(path_to_libnola)
-    save_config(config)
+    config_file.save(config, os.path.join(homedir, 'config.json'))
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
@@ -117,23 +105,33 @@ def main():
         return info()
     elif args.command.startswith("build"):
         if len(args.command) < 6:
-            return build(load_config())
-        elif args.command[5] != "=":
+            return build(config_file.load(os.path.join(homedir, 'config.json')))
+        elif args.command[5] == "=":
+            return build(config_file.load(os.path.join(homedir, 'config.json')), args.command[6:])
+        else:
             print("* Use 'build=[board name]' to change the board", file=sys.stderr)
+            parser.print_help()
+            return 1
+    elif args.command.startswith("flash"):
+        if args.command == "flash":
+            return flash()
+        elif args.command[5] == "=":
+            interface = args.command[6:]
+            return flash(interface)
+        else:
+            print("* Use 'flash=[interface name]' to flash the board new image", file=sys.stderr)
             parse.print_help()
             return 1
-        else:
-            return build(load_config(), args.command[6:])
     elif args.command.startswith("checkout"):
         if len(args.command) < 9:
             print("* Checking out the latest version...")
             return checkout(os.path.join(homedir, 'repo'))
-        elif args.command[8] != "=":
+        elif args.command[8] == "=":
+            return checkout(os.path.join(homedir, 'repo'), args.command[9:])
+        else:
             print("* Use 'checkout=[version]' to specify the version", file=sys.stderr)
             parse.print_help()
             return 1
-        else:
-            return checkout(os.path.join(homedir, 'repo'), args.command[9:])
     elif args.command.startswith("login"):
         if len(args.command) < 6 or args.command[5] != "=":
             print("* 'login' command requires both user and token parameters", file=sys.stderr)
