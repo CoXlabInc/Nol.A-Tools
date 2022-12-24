@@ -16,14 +16,16 @@ from .utils import config_file
 from .build import build, flash
 from .repo import clone, get_versions, get_current_version, checkout, update
 
-homedir = os.path.join(os.path.expanduser('~'), '.nola')
-os.makedirs(homedir, exist_ok=True)
+home_dir = os.path.join(os.path.expanduser('~'), '.nola')
+os.makedirs(home_dir, exist_ok=True)
+
+config_json = os.path.join(home_dir, 'config.json')
+repo_dir = os.path.join(home_dir, 'repo')
+key_file = os.path.join(home_dir, 'key')
 
 # TODO Clone the public library.
 
 def set_key(token):
-    key_file = os.path.join(homedir, 'key')
-
     if os.path.exists(key_file):
         os.remove(key_file)
     with open(key_file, 'w') as f:
@@ -35,14 +37,14 @@ def set_key(token):
 def info():
     print(f"* Nol.A-SDK Command Line Interface v{__version__}")
 
-    config = config_file.load(os.path.join(homedir, 'config.json'))
+    config = config_file.load(config_json)
     if 'user' in config:
         user = config['user']
     else:
         user = None
     print(f"User: {user}")
 
-    current_version, versions = get_versions(os.path.join(homedir, 'repo'))
+    current_version, versions = get_versions(repo_dir)
     print(f"Current version: {current_version}")
     print(f"Avilable versions: {versions}")
 
@@ -53,28 +55,26 @@ def info():
 def login(user, token):
     #print(f"Login user:{user}, token:{token}")
 
-    config = config_file.load(os.path.join(homedir, 'config.json'))
+    config = config_file.load(config_json)
     config['user'] = user
     set_key(token)
 
-    if clone(os.path.join(homedir, 'repo'), user):
-        config_file.save(config, os.path.join(homedir, 'config.json'))
-        return checkout(os.path.join(homedir, 'repo'))
+    if clone(repo_dir, user):
+        config_file.save(config, config_json)
+        return checkout(repo_dir)
     else:
         return False
 
 def logout():
-    config = config_file.load(os.path.join(homedir, 'config.json'))
+    config = config_file.load(config_json)
     del config['user']
-    config_file.save(config, os.path.join(homedir, 'config.json'))
+    config_file.save(config, config_json)
 
-    key_file = os.path.join(homedir, 'key')
     if os.path.isfile(key_file):
         os.remove(key_file)
     elif os.path.isdir(key_file):
         shutil.rmtree(key_file)
 
-    repo_dir = os.path.join(homedir, 'repo')
     if os.path.isdir(repo_dir):
         shutil.rmtree(repo_dir)
     elif os.path.isfile(repo_dir):
@@ -85,12 +85,12 @@ def logout():
     return True
 
 def devmode(path_to_libnola):
-    config = config_file.load(os.path.join(homedir, 'config.json'))
+    config = config_file.load(config_json)
     if path_to_libnola == '':
         del config['libnola']
     else:
         config['libnola'] = os.path.expanduser(path_to_libnola)
-    config_file.save(config, os.path.join(homedir, 'config.json'))
+    config_file.save(config, config_json)
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
@@ -105,19 +105,19 @@ def main():
         return info()
     elif args.command.startswith("build"):
         if len(args.command) < 6:
-            return build(config_file.load(os.path.join(homedir, 'config.json')))
+            return build(config_file.load(config_json))
         elif args.command[5] == "=":
-            return build(config_file.load(os.path.join(homedir, 'config.json')), args.command[6:])
+            return build(config_file.load(config_json), args.command[6:])
         else:
             print("* Use 'build=[board name]' to change the board", file=sys.stderr)
             parser.print_help()
             return 1
     elif args.command.startswith("flash"):
         if args.command == "flash":
-            return flash()
+            return flash(config_file.load(config_json))
         elif args.command[5] == "=":
             interface = args.command[6:]
-            return flash(interface)
+            return flash(config_file.load(config_json), interface)
         else:
             print("* Use 'flash=[interface name]' to flash the board new image", file=sys.stderr)
             parse.print_help()
@@ -125,9 +125,9 @@ def main():
     elif args.command.startswith("checkout"):
         if len(args.command) < 9:
             print("* Checking out the latest version...")
-            return checkout(os.path.join(homedir, 'repo'))
+            return checkout(repo_dir)
         elif args.command[8] == "=":
-            return checkout(os.path.join(homedir, 'repo'), args.command[9:])
+            return checkout(repo_dir, args.command[9:])
         else:
             print("* Use 'checkout=[version]' to specify the version", file=sys.stderr)
             parse.print_help()
@@ -155,7 +155,7 @@ def main():
         print(f"* Logged out successfully.")
 
     elif args.command == "update":
-        return update(os.path.join(homedir, 'repo'))
+        return update(repo_dir)
     elif args.command.startswith('devmode'):
         if len(args.command) < 8 or args.command[7] != "=":
             print(" * 'devmode' command requires libnola path", file=sys.stderr)

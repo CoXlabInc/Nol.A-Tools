@@ -12,10 +12,53 @@ from threading import Thread
 from .repo import get_current_version
 from .utils import config_file
 
+ON_POSIX = 'posix' in sys.builtin_module_names
+
 def supported_boards(repo_dir):
     for d in os.listdir(repo_dir):
         if os.path.isdir(os.path.join(repo_dir, d)) and d not in ['include', 'make', 'tools', '.git']:
             yield d
+
+def run_process(command, env):
+    process = subprocess.Popen(command,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
+                               env=env,
+                               close_fds=ON_POSIX)
+
+    def enqueue(out, queue):
+        for line in iter(out.readline, b''):
+            queue.put(line)
+        out.close()
+
+    q_out = Queue()
+    t_out = Thread(target=enqueue, args=(process.stdout, q_out))
+    t_out.daemon = True
+    t_out.start()
+        
+    q_err = Queue()
+    t_err = Thread(target=enqueue, args=(process.stderr, q_err))
+    t_err.daemon = True
+    t_err.start()
+        
+    while True:
+        try:
+            line = q_out.get_nowait()
+            if line:
+                print(line.decode(locale.getpreferredencoding()).rstrip())
+        except Empty:
+            pass
+
+        try:
+            line = q_err.get_nowait()
+            if line:
+                print(line.decode(locale.getpreferredencoding()).rstrip())
+        except Empty:
+            pass
+
+        ret_code = process.poll()
+        if ret_code is not None:
+            return ret_code
 
 def build(config, board=None):
     if os.path.exists('Nol.A-project.json') == False:
@@ -29,8 +72,6 @@ def build(config, board=None):
         project['board'] = board
 
     if 'libnola' in config:
-        ON_POSIX = 'posix' in sys.builtin_module_names
-
         if config['libnola'].startswith('wsl://'):
             sep = config['libnola'][6:].find('/')
             dist = config['libnola'][6:6+sep]
@@ -51,45 +92,8 @@ def build(config, board=None):
             command = ['wsl', '-d', dist, '--cd', cwd_wsl, 'python3', '-u', '-m', 'nola_tools.__init__', 'build']
         else:
             command = ['make', '-C', config['libnola'], f"TARGET={project['board']}", "SKIP_BUILD_TEST=1"]
-        make_process = subprocess.Popen(command,
-                                        stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE,
-                                        env=os.environ,
-                                        close_fds=ON_POSIX)
 
-        def enqueue(out, queue):
-            for line in iter(out.readline, b''):
-                queue.put(line)
-            out.close()
-
-        q_out = Queue()
-        t_out = Thread(target=enqueue, args=(make_process.stdout, q_out))
-        t_out.daemon = True
-        t_out.start()
-        
-        q_err = Queue()
-        t_err = Thread(target=enqueue, args=(make_process.stderr, q_err))
-        t_err.daemon = True
-        t_err.start()
-        
-        while True:
-            try:
-                line = q_out.get_nowait()
-                if line:
-                    print(line.decode(locale.getpreferredencoding()).rstrip())
-            except Empty:
-                pass
-
-            try:
-                line = q_err.get_nowait()
-                if line:
-                    print(line.decode(locale.getpreferredencoding()).rstrip())
-            except Empty:
-                pass
-
-            ret_code = make_process.poll()
-            if ret_code is not None:
-                break
+        ret_code = run_process(command, os.environ)
  
         if config['libnola'].startswith('wsl://'):
             return ret_code
@@ -101,7 +105,10 @@ def build(config, board=None):
         repo_dir = os.path.join(config['libnola'], 'nola-sdk')
     else:
         repo_dir = os.path.join(os.path.expanduser('~'), '.nola', 'repo')
-        
+
+    return build_common(repo_dir, config, project)
+
+def build_common(repo_dir, config, project, port=None):
     if project['board'] not in supported_boards(repo_dir):
         print(f"* The board '{project['board']}' not supported.", file=sys.stderr)
         boards = list(supported_boards())
@@ -160,31 +167,16 @@ def build(config, board=None):
     env = os.environ
     env['PWD'] = os.path.join(repo_dir, 'make')
     env['BOARD'] = project['board']
-    env['PORT'] = 'None'
-    
-    make_process = subprocess.Popen(command_args,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    env=env)
-    os.set_blocking(make_process.stdout.fileno(), False)
-    os.set_blocking(make_process.stderr.fileno(), False)
-    while True:
-        output = make_process.stdout.readline()
-        if len(output) > 0:
-            print(output.decode(), end='')
-        error = make_process.stderr.readline()
-        if len(error) > 0:
-            print(error.decode(), end='', file=sys.stderr)
-        ret_code = make_process.poll()
-        if ret_code is not None:
-            break
+    env['PORT'] = 'None' if port is None else port
+
+    ret_code = run_process(command_args, env)
 
     last_build_context['ver'] = current_version
     config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
     
     return ret_code == 0
 
-def flash(interface=None):
+def flash(config, interface=None):
     if os.path.exists('Nol.A-project.json') == False:
         print("* Do 'build' under the Nol.A project directory.", file=sys.stderr)
         print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
@@ -210,8 +202,12 @@ def flash(interface=None):
         print("* No interface is specified. Use 'flash={interface name}'.", file=sys.stderr)
         return False
 
-    # TODO make flash
+    repo_dir = os.path.join(os.path.expanduser('~'), '.nola', 'repo')
 
-    last_build_context['interface'] = interface
-    config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
-    return True
+    success = build_common(repo_dir, config, project, interface)
+    if success:
+        last_build_context['interface'] = interface
+        config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
+    else:
+        os.remove(os.path.join(build_dir, 'build.json'))
+    return success
