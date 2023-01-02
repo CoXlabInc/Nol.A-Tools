@@ -84,6 +84,28 @@ def logout():
     
     return True
 
+def get_path(key=None):
+    config = config_file.load(config_json)
+    paths = config.get('path')
+    if type(paths) is dict:
+        if key is None:
+            for k in paths.keys():
+                print(f"{k}: {paths[k]}")
+        else:
+            print(paths.get(key))
+
+def set_path(key, path):
+    config = config_file.load(config_json)
+    paths = config.get('path')
+    if type(paths) is not dict:
+        paths = {}
+    if path == "":
+        del paths[key]
+    else:
+        paths[key] = path
+    config['path'] = paths
+    config_file.save(config, config_json)
+
 def devmode(path_to_libnola):
     config = config_file.load(config_json)
     if path_to_libnola == '':
@@ -94,7 +116,7 @@ def devmode(path_to_libnola):
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
-    parser.add_argument('command', nargs='?', help='info, build[={board}], checkout[={version}], login={user}:{token}, logout, update, devmode={path to libnola source tree}')
+    parser.add_argument('command', nargs='?', help='info, build[={board}], checkout[={version}], login={user}:{token}, logout, update, path={key}:{value}, devmode={path to libnola source tree}')
     args = parser.parse_args()
 
     if args.command is None:
@@ -156,6 +178,29 @@ def main():
 
     elif args.command == "update":
         return update(repo_dir)
+    elif args.command.startswith("path"):
+        def print_path_help():
+            print("* 'path' command shows all set paths.", file=sys.stderr)
+            print("* 'path={key}' command shows the path of the 'key'.", file=sys.stderr)
+            print("* 'path={key}:{value}' set the path of the 'key'.", file=sys.stderr)
+            print("* 'path={key}:' removes the path of the 'key'.", file=sys.stderr)
+            
+        if args.command == "path":
+            get_path()
+            return 0
+        elif len(args.command) > 4 and args.command[4] == "=":
+            path_args = args.command[5:].split(':', 1)
+            if len(path_args) == 2 and path_args[0] != '?':
+                set_path(path_args[0], path_args[1])
+            elif path_args[0] != '?':
+                get_path(path_args[0])
+            else:
+                print_path_help()
+                return 1
+            return 0
+        else:
+            print_path_help()
+            return 1
     elif args.command.startswith('devmode'):
         if len(args.command) < 8 or args.command[7] != "=":
             print(" * 'devmode' command requires libnola path", file=sys.stderr)

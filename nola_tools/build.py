@@ -167,7 +167,12 @@ def build_common(repo_dir, config, project, port=None):
     env = os.environ
     env['PWD'] = os.path.join(repo_dir, 'make')
     env['BOARD'] = project['board']
-    env['PORT'] = 'None' if port is None else port
+    env['PORT'] = str(port)
+
+    paths = config.get('path')
+    if type(paths) is dict:
+        if paths.get('stm32cube') is not None:
+            env['PATH_STM32CUBE'] = paths.get('stm32cube')
 
     ret_code = run_process(command_args, env)
 
