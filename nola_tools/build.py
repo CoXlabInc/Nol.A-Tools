@@ -119,7 +119,7 @@ def build_common(repo_dir, config, project, port=None):
     with open("Nol.A-project.json", 'w', encoding='utf-8') as f:
         json.dump(project, f, indent=4)
 
-    current_version = get_current_version(repo_dir) + '(dev)' if 'libnola' in config else ''
+    current_version = get_current_version(repo_dir) + ('(dev)' if 'libnola' in config else '')
     print(f"* Current version: {current_version}")
 
     build_dir = os.path.join('build', project['board'])
