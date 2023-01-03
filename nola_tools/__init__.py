@@ -106,13 +106,16 @@ def set_path(key, path):
     config['path'] = paths
     config_file.save(config, config_json)
 
-def devmode(path_to_libnola):
+def devmode(path_to_libnola=None):
     config = config_file.load(config_json)
-    if path_to_libnola == '':
+    if path_to_libnola is None:
+        return config.get('libnola')
+    elif path_to_libnola == '':
         del config['libnola']
     else:
         config['libnola'] = os.path.expanduser(path_to_libnola)
     config_file.save(config, config_json)
+    return config.get('libnola')
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
@@ -180,8 +183,8 @@ def main():
         return update(repo_dir)
     elif args.command.startswith("path"):
         def print_path_help():
-            print("* 'path' command shows all set paths.", file=sys.stderr)
-            print("* 'path={key}' command shows the path of the 'key'.", file=sys.stderr)
+            print("* 'path' shows all set paths.", file=sys.stderr)
+            print("* 'path={key}' shows the path of the 'key'.", file=sys.stderr)
             print("* 'path={key}:{value}' set the path of the 'key'.", file=sys.stderr)
             print("* 'path={key}:' removes the path of the 'key'.", file=sys.stderr)
             
@@ -202,11 +205,27 @@ def main():
             print_path_help()
             return 1
     elif args.command.startswith('devmode'):
-        if len(args.command) < 8 or args.command[7] != "=":
-            print(" * 'devmode' command requires libnola path", file=sys.stderr)
-            parser.print_help()
+        def print_devmode_help():
+            print("* 'devmode' shows the libnola source path to build.", file=sys.stderr)
+            print("* 'devmode={path}' set the libnola source path.", file=sys.stderr)
+            print("* 'devmode=' removes the libnola source path.", file=sys.stderr)
+
+        if args.command == 'devmode':
+            path = devmode(None)
+            if path is not None:
+                print(path)
+            return 0
+        elif len(args.command) > 7 and args.command[7] == "=":
+            new_path = args.command[8:]
+            if new_path != '?':
+                print(devmode(new_path))
+                return 0
+            else:
+                print_devmode_help()
+                return 1
+        else:
+            print_devmode_help()
             return 1
-        devmode(args.command[8:])
     else:
         print("* Unknown command", file=sys.stderr)
         parser.print_help()
