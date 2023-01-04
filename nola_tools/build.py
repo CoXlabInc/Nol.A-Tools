@@ -7,6 +7,7 @@ import subprocess
 import platform
 import time
 import locale
+from pbr.version import VersionInfo
 from queue import Queue, Empty
 from threading import Thread
 from .repo import get_current_version
@@ -45,14 +46,20 @@ def run_process(command, env):
         try:
             line = q_out.get_nowait()
             if line:
-                print(line.decode(locale.getpreferredencoding()).rstrip())
+                try:
+                    print(line.decode(locale.getpreferredencoding()).rstrip())
+                except UnicodeDecodeError:
+                    print(line)
         except Empty:
             pass
 
         try:
             line = q_err.get_nowait()
             if line:
-                print(line.decode(locale.getpreferredencoding()).rstrip())
+                try:
+                    print(line.decode(locale.getpreferredencoding()).rstrip())
+                except UnicodeDecodeError:
+                    print(line)
         except Empty:
             pass
 
@@ -168,6 +175,7 @@ def build_common(repo_dir, config, project, port=None):
     env['PWD'] = os.path.join(repo_dir, 'make')
     env['BOARD'] = project['board']
     env['PORT'] = str(port)
+    env['NOLA_CLI'] = VersionInfo('nola_tools').release_string()
 
     paths = config.get('path')
     if type(paths) is dict:
