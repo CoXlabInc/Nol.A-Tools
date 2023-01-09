@@ -100,7 +100,8 @@ def set_path(key, path):
     if type(paths) is not dict:
         paths = {}
     if path == "":
-        del paths[key]
+        if key in paths.keys():
+            del paths[key]
     else:
         paths[key] = path
     config['path'] = paths
@@ -111,7 +112,8 @@ def devmode(path_to_libnola=None):
     if path_to_libnola is None:
         return config.get('libnola')
     elif path_to_libnola == '':
-        del config['libnola']
+        if 'libnola' in config.keys():
+            del config['libnola']
     else:
         config['libnola'] = os.path.expanduser(path_to_libnola)
     config_file.save(config, config_json)
@@ -130,9 +132,9 @@ def main():
         return info()
     elif args.command.startswith("build"):
         if len(args.command) < 6:
-            return build(config_file.load(config_json))
+            return 0 if build(config_file.load(config_json)) else 1
         elif args.command[5] == "=":
-            return build(config_file.load(config_json), args.command[6:])
+            return 0 if build(config_file.load(config_json), args.command[6:]) else 1
         else:
             print("* Use 'build=[board name]' to change the board", file=sys.stderr)
             parser.print_help()
