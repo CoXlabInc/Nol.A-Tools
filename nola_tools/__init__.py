@@ -13,7 +13,7 @@ import shutil
 import git
 
 from .utils import config_file
-from .build import build, flash
+from .build import build
 from .repo import clone, get_versions, get_current_version, checkout, update
 
 home_dir = os.path.join(os.path.expanduser('~'), '.nola')
@@ -141,10 +141,10 @@ def main():
             return 1
     elif args.command.startswith("flash"):
         if args.command == "flash":
-            return flash(config_file.load(config_json))
+            return build(config_file.load(config_json), board=None)
         elif args.command[5] == "=":
             interface = args.command[6:]
-            return flash(config_file.load(config_json), interface)
+            return build(config_file.load(config_json), board=None, interface=interface)
         else:
             print("* Use 'flash=[interface name]' to flash the board new image", file=sys.stderr)
             parse.print_help()

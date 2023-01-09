@@ -67,7 +67,7 @@ def run_process(command, env):
         if ret_code is not None:
             return ret_code
 
-def build(config, board=None):
+def build(config, board=None, interface=None):
     if os.path.exists('Nol.A-project.json') == False:
         print("* Do 'build' under the Nol.A project directory.", file=sys.stderr)
         print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
@@ -113,9 +113,6 @@ def build(config, board=None):
     else:
         repo_dir = os.path.join(os.path.expanduser('~'), '.nola', 'repo')
 
-    return build_common(repo_dir, config, project)
-
-def build_common(repo_dir, config, project, port=None):
     if project['board'] not in supported_boards(repo_dir):
         print(f"* The board '{project['board']}' not supported.", file=sys.stderr)
         boards = list(supported_boards())
@@ -171,10 +168,15 @@ def build_common(repo_dir, config, project, port=None):
     current_versions = current_version.split('.')
     command_args.append(f"DEF={definitions}NOLA_VER_MAJOR={current_versions[0]} NOLA_VER_MINOR={current_versions[1]} NOLA_VER_PATCH={current_versions[2].split('(')[0]}")
 
+    if interface is None:
+        interface = last_build_context.get('interface')
+    
+    print(f"* Flash interface: {interface}")
+
     env = os.environ
     env['PWD'] = os.path.join(repo_dir, 'make')
     env['BOARD'] = project['board']
-    env['PORT'] = str(port)
+    env['PORT'] = str(interface)
     env['NOLA_CLI'] = VersionInfo('nola_tools').release_string()
 
     paths = config.get('path')
@@ -185,42 +187,7 @@ def build_common(repo_dir, config, project, port=None):
     ret_code = run_process(command_args, env)
 
     last_build_context['ver'] = current_version
+    last_build_context['interface'] = interface
     config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
     
     return ret_code == 0
-
-def flash(config, interface=None):
-    if os.path.exists('Nol.A-project.json') == False:
-        print("* Do 'build' under the Nol.A project directory.", file=sys.stderr)
-        print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
-        return False
-
-    project = config_file.load("Nol.A-project.json")
-
-    if project.get('board') is None:
-        print("* No board is configured. If you want to start a new project, use 'new' command.", file=sys.stderr)
-        return False
-
-    build_dir = os.path.join('build', project['board'])
-    if os.path.exists(build_dir) == False:
-        print("* Do 'build' first.", file=sys.stderr)
-        return False
-
-    last_build_context = config_file.load(os.path.join(build_dir, 'build.json'))
-
-    if interface is None:
-        interface = last_build_context.get('interface')
-
-    if interface is None:
-        print("* No interface is specified. Use 'flash={interface name}'.", file=sys.stderr)
-        return False
-
-    repo_dir = os.path.join(os.path.expanduser('~'), '.nola', 'repo')
-
-    success = build_common(repo_dir, config, project, interface)
-    if success:
-        last_build_context['interface'] = interface
-        config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
-    else:
-        os.remove(os.path.join(build_dir, 'build.json'))
-    return success
