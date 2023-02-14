@@ -121,7 +121,7 @@ def devmode(path_to_libnola=None):
     
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
-    parser.add_argument('command', nargs='?', help='info, build[={board}], checkout[={version}], login={user}:{token}, logout, update, path={key}:{value}, devmode={path to libnola source tree}')
+    parser.add_argument('command', nargs='?', help='info\nbuild[={board}], checkout[={version}], login={user}:{token}, logout, update, path={key}:{value}, devmode={path to libnola source tree}')
     args = parser.parse_args()
 
     if args.command is None:
@@ -141,10 +141,9 @@ def main():
             return 1
     elif args.command.startswith("flash"):
         if args.command == "flash":
-            return build(config_file.load(config_json), board=None)
+            return 0 if build(config_file.load(config_json), board=None, interface='LAST') else 1
         elif args.command[5] == "=":
-            interface = args.command[6:]
-            return build(config_file.load(config_json), board=None, interface=interface)
+            return 0 if build(config_file.load(config_json), board=None, interface=args.command[6:]) else 1
         else:
             print("* Use 'flash=[interface name]' to flash the board new image", file=sys.stderr)
             parse.print_help()

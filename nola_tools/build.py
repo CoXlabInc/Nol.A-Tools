@@ -168,7 +168,7 @@ def build(config, board=None, interface=None):
     current_versions = current_version.split('.')
     command_args.append(f"DEF={definitions}NOLA_VER_MAJOR={current_versions[0]} NOLA_VER_MINOR={current_versions[1]} NOLA_VER_PATCH={current_versions[2].split('(')[0]}")
 
-    if interface is None:
+    if interface is not None and interface.upper() == 'LAST':
         interface = last_build_context.get('interface')
     
     print(f"* Flash interface: {interface}")
@@ -176,7 +176,8 @@ def build(config, board=None, interface=None):
     env = os.environ
     env['PWD'] = os.path.join(repo_dir, 'make')
     env['BOARD'] = project['board']
-    env['PORT'] = str(interface)
+    if interface is not None:
+        env['PORT'] = str(interface)
     env['NOLA_CLI'] = VersionInfo('nola_tools').release_string()
 
     paths = config.get('path')
@@ -187,7 +188,8 @@ def build(config, board=None, interface=None):
     ret_code = run_process(command_args, env)
 
     last_build_context['ver'] = current_version
-    last_build_context['interface'] = interface
+    if interface is not None:
+        last_build_context['interface'] = interface
     config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
     
     return ret_code == 0
