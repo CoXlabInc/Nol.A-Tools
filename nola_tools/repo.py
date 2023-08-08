@@ -23,7 +23,7 @@ def get_versions(repo_dir):
 
 def get_current_version(repo_dir):
     assert os.path.exists(repo_dir), "'login' is required."
-    return git.cmd.Git(repo_dir).describe('--tags')
+    return git.cmd.Git(repo_dir).describe('--tags', '--always', '--dirty', '--abbrev=7', '--long')
 
 def get_available_versions(repo_dir):
     assert os.path.exists(repo_dir), "'login' is required."
