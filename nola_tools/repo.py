@@ -23,11 +23,45 @@ def get_versions(repo_dir):
 
 def get_current_version(repo_dir):
     assert os.path.exists(repo_dir), "'login' is required."
-    return git.cmd.Git(repo_dir).describe('--tags', '--always', '--dirty', '--abbrev=7', '--long')
+
+    try:
+        v = git.cmd.Git(repo_dir).describe('--tags', '--always', '--dirty', '--abbrev=7', '--long')
+    except git.exc.GitCommandError as e:
+        return None
+
+    vparsed = {
+        'describe': v
+    }
+
+    pos_dirty = v.rfind('-dirty')
+    if pos_dirty >= 0:
+        vparsed['dirty'] = True
+        v = v[:pos_dirty]
+    else:
+        vparsed['dirty'] = False
+
+    v = v.split('-')
+    if len(v) == 1:
+        vparsed['major'] = 0
+        vparsed['minor'] = 0
+        vparsed['patch'] = 0
+        vparsed['commit'] = v[0]
+    else:
+        versions = v[0].split('.')
+        vparsed['major'] = versions[0]
+        vparsed['minor'] = versions[1]
+        vparsed['patch'] = versions[2]
+        vparsed['commit'] = v[2][1:]
+    return vparsed
 
 def get_available_versions(repo_dir):
     assert os.path.exists(repo_dir), "'login' is required."
-    return [v.name for v in git.Repo(repo_dir).tags]
+
+    try:
+        versions = git.Repo(repo_dir).tags
+    except git.exc.GitCommandError as e:
+        return []
+    return [v.name for v in versions]
 
 def get_latest_version(A, B):
     a = A.split('.')

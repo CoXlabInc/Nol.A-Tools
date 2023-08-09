@@ -123,8 +123,10 @@ def build(config, board=None, interface=None):
     with open("Nol.A-project.json", 'w', encoding='utf-8') as f:
         json.dump(project, f, indent=4)
 
-    current_version = get_current_version(repo_dir) + ('(dev)' if 'libnola' in config else '')
-    print(f"* Current version: {current_version}")
+    project_version = get_current_version('.')
+    print(f"* Project version: {project_version['describe']}")
+    libnola_version = get_current_version(repo_dir)
+    print(f"* libnola version: {libnola_version['describe']}{' (dev)' if 'libnola' in config else ''}")
 
     build_dir = os.path.join('build', project['board'])
     if 'libnola' in config and os.path.exists(build_dir):
@@ -135,7 +137,7 @@ def build(config, board=None, interface=None):
 
     if 'ver' in last_build_context:
         print(f"* Last used library version: {last_build_context['ver']}")
-        if last_build_context['ver'] != current_version and os.path.exists(build_dir):
+        if last_build_context['ver'] != libnola_version and os.path.exists(build_dir):
             shutil.rmtree(build_dir)
 
     os.makedirs(build_dir, exist_ok=True)
@@ -157,7 +159,16 @@ def build(config, board=None, interface=None):
     if 'def' in project:
         for d in project['def'].split(' '):
             d = d.split('=')
-            if d[0] in ['NOLA_VER_MAJOR', 'NOLA_VER_MINOR', 'NOLA_VER_PATCH']:
+            if d[0] in ['NOLA_VER_MAJOR',
+                        'NOLA_VER_MINOR',
+                        'NOLA_VER_PATCH',
+                        'NOLA_VER_COMMIT',
+                        'NOLA_VER_DIRTY',
+                        'PROJ_VER_MAJOR',
+                        'PROJ_VER_MINOR',
+                        'PROJ_VER_PATCH',
+                        'PROJ_VER_COMMIT',
+                        'PROJ_VER_DIRTY']:
                 print(f"* User definition '{d[0]}' cannot be used.", file=sys.stderr)
                 return False
         print(f"* User definitions: {project['def']}")
@@ -165,8 +176,21 @@ def build(config, board=None, interface=None):
     else:
         definitions = ''
 
-    current_versions = current_version.split('.')
-    command_args.append(f"DEF={definitions}NOLA_VER_MAJOR={current_versions[0]} NOLA_VER_MINOR={current_versions[1]} NOLA_VER_PATCH={current_versions[2].split('(')[0]}")
+    d = "DEF=" + definitions
+    d += f" NOLA_VER_MAJOR={libnola_version['major']}"
+    d += f" NOLA_VER_MINOR={libnola_version['minor']}"
+    d += f" NOLA_VER_PATCH={libnola_version['patch']}"
+    d += f" NOLA_VER_COMMIT=0x{libnola_version['commit']}"
+    d += f" NOLA_VER_DIRTY={1 if libnola_version['dirty'] else 0}"
+
+    if project_version is not None:
+        d += f" PROJ_VER_MAJOR={project_version['major']}"
+        d += f" PROJ_VER_MINOR={project_version['minor']}"
+        d += f" PROJ_VER_PATCH={project_version['patch']}"
+        d += f" PROJ_VER_COMMIT=0x{project_version['commit']}"
+        d += f" PROJ_VER_DIRTY={1 if project_version['dirty'] else 0}"
+        
+    command_args.append(d)
 
     if interface is not None and interface.upper() == 'LAST':
         interface = last_build_context.get('interface')
@@ -187,7 +211,7 @@ def build(config, board=None, interface=None):
 
     ret_code = run_process(command_args, env)
 
-    last_build_context['ver'] = current_version
+    last_build_context['ver'] = libnola_version
     if interface is not None:
         last_build_context['interface'] = interface
     config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
