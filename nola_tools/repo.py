@@ -49,9 +49,10 @@ def get_current_version(repo_dir):
     else:
         versions = v[0].split('.')
         vparsed['major'] = versions[0]
-        vparsed['minor'] = versions[1]
-        vparsed['patch'] = versions[2]
+        vparsed['minor'] = versions[1] if len(versions) >= 2 else 0
+        vparsed['patch'] = versions[2] if len(versions) >= 3 else 0
         vparsed['commit'] = v[2][1:]
+        
     return vparsed
 
 def get_available_versions(repo_dir):
