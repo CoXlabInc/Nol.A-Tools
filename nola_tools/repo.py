@@ -47,7 +47,7 @@ def get_current_version(repo_dir):
         vparsed['patch'] = 0
         vparsed['commit'] = v[0]
     else:
-        versions = v[0].split('.')
+        versions = v[0].split('.', maxsplit=3)
         vparsed['major'] = versions[0]
         vparsed['minor'] = versions[1] if len(versions) >= 2 else 0
         vparsed['patch'] = versions[2] if len(versions) >= 3 else 0
