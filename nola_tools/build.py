@@ -208,6 +208,8 @@ def build(config, board=None, interface=None):
     if type(paths) is dict:
         if paths.get('stm32cube') is not None:
             env['PATH_STM32CUBE'] = paths.get('stm32cube')
+        if paths.get('jlink') is not None:
+            env['PATH_JLINK'] = paths.get('jlink')
 
     ret_code = run_process(command_args, env)
 
