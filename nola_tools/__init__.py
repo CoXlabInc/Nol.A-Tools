@@ -13,7 +13,7 @@ import shutil
 import git
 
 from .utils import config_file
-from .build import build
+from .build import build, clean
 from .repo import clone, get_versions, get_current_version, checkout, update
 
 home_dir = os.path.join(os.path.expanduser('~'), '.nola')
@@ -148,6 +148,8 @@ def main():
             print("* Use 'flash=[interface name]' to flash the board new image", file=sys.stderr)
             parse.print_help()
             return 1
+    elif args.command == 'clean':
+        return 0 if clean() else 1
     elif args.command.startswith("checkout"):
         if len(args.command) < 9:
             print("* Checking out the latest version...")

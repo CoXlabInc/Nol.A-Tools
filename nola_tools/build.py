@@ -69,7 +69,7 @@ def run_process(command, env):
 
 def build(config, board=None, interface=None):
     if os.path.exists('Nol.A-project.json') == False:
-        print("* Do 'build' under the Nol.A project directory.", file=sys.stderr)
+        print("* The Nol.A project file is not found.", file=sys.stderr)
         print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
         return False
 
@@ -219,3 +219,12 @@ def build(config, board=None, interface=None):
     config_file.save(last_build_context, os.path.join(build_dir, 'build.json'))
     
     return ret_code == 0
+
+def clean():
+    if os.path.exists('Nol.A-project.json') == False:
+        print("* The Nol.A project file is not found.", file=sys.stderr)
+        print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
+        return False
+    
+    shutil.rmtree('build')
+    return True
