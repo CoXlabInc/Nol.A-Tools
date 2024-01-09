@@ -13,7 +13,7 @@ import shutil
 import git
 
 from .utils import config_file
-from .build import build, clean
+from .build import build, clean, supported_boards
 from .repo import clone, get_versions, get_current_version, checkout, update
 
 home_dir = os.path.join(os.path.expanduser('~'), '.nola')
@@ -47,6 +47,9 @@ def info():
     current_version, versions = get_versions(repo_dir)
     print(f"Current version: {current_version}")
     print(f"Avilable versions: {versions}")
+
+    boards = list(supported_boards(repo_dir))
+    print(f"Avilable boards: {boards}", file=sys.stderr)
 
     if 'libnola' in config:
         print(f"libnola under development: {config['libnola']}")

@@ -43,6 +43,13 @@ nola info
 nola build
 ```
 
+If you want to change the board, specify the new board name like below:
+```
+nola build={new board name}
+```
+
+You can retrieve the available boards by using ```nola info```.
+
 #### 2-3-1. Development Mode
 
 For private users,

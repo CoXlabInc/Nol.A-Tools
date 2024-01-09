@@ -115,7 +115,7 @@ def build(config, board=None, interface=None):
 
     if project['board'] not in supported_boards(repo_dir):
         print(f"* The board '{project['board']}' not supported.", file=sys.stderr)
-        boards = list(supported_boards())
+        boards = list(supported_boards(repo_dir))
         print(f"* Avilable boards: {boards}", file=sys.stderr)
         return False
 
@@ -225,6 +225,8 @@ def clean():
         print("* The Nol.A project file is not found.", file=sys.stderr)
         print("* If you want to start a new project, use 'new' command.", file=sys.stderr)
         return False
+
+    if os.path.exists('build') == True:
+        shutil.rmtree('build')
     
-    shutil.rmtree('build')
     return True
