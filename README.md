@@ -3,41 +3,41 @@
 The Nol.A-Tools is a command line interface for Nol.A-SDK.
 The Nol.A-SDK is a software development kit for IoT device firmware development.
 
-## 1. Installation
+## Installation
 
-### 1-1. Prerequisites
+### Prerequisites
 
 * OS: macOS, Linux, Windows (WSL2 based Linux)
 * Python3
 
-### 1-2. Install command
+### Install command
 
 ```
 python3 -m pip install nola_tools
 ```
 
-### 1-3. Update command
+### Update command
 
 ```
 python3 -m pip install nola_tools --upgrade
 ```
 
-## 2. Usage
+## Usage
 
-### 2-1. Login
+### Login
 
 For private users,
 ```
 nola login={user name}:{token}
 ```
 
-### 2-2. Print information
+### Print information
 
 ```
 nola info
 ```
 
-### 2-3. Build
+### Build
 
 ```
 nola build
@@ -50,7 +50,7 @@ nola build={new board name}
 
 You can retrieve the available boards by using ```nola info```.
 
-#### 2-3-1. Development Mode
+#### SDK Library Development Mode
 
 For private users,
 
@@ -58,14 +58,14 @@ For private users,
 nola devmode={path to libnola source directory}
 ```
 
-### 2-4. Flash
+### Flash
 
 ```
 nola flash={options...}
 ```
 The options must be specified according to which debugger is used.
 
-#### 2-4-1. J-Link
+#### J-Link
 
 To use J-Link as a flashing tool, setting ```jlink``` path variable is required.
 
@@ -85,7 +85,7 @@ The ```flash``` option must be ```jlink```.
 nola flash=jlink
 ```
 
-#### 2-4-2. ST-Link
+#### ST-Link
 
 To use ST-Link as a flashing tool, setting ```stm32cube``` path variable is required.
 
@@ -117,9 +117,9 @@ nola flash=stlink:/dev/cu.usbmodem0000
 nola flash=stlink:com3
 ```
 
-### 2-5. SDK Version
+### SDK Version
 
-#### 2-5-1. Checkout
+#### Checkout
 
 The current and available SDK version numbers can be retrieved by using ```nola info``` command.
 
@@ -128,9 +128,21 @@ You can change the SDK version number like below:
 nola checkout={new version number}
 ```
 
-#### 2-5-2. Update
+#### Update
 
 You can update the SDK version like below:
 ```
 nola update
+```
+
+### Path Variables
+In order to use commands such as ```flash```, external application paths must be specified first.
+
+```
+nola path={key}:{value}
+```
+
+You can also retrieve all specified paths like below:
+```
+nola path
 ```
