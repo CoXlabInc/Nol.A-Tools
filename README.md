@@ -63,6 +63,7 @@ nola devmode={path to libnola source directory}
 ```
 nola flash={options...}
 ```
+The options must be specified according to which debugger is used.
 
 #### 2-4-1. J-Link
 
@@ -79,6 +80,11 @@ For Windows WSL2 users, the ```JLink.exe``` in the Windows region must be used.
 nola path=jlink:/mnt/c/Program\\\ Files/SEGGER/JLink_V794/JLink.exe
 ```
 
+The ```flash``` option must be ```jlink```.
+```
+nola flash=jlink
+```
+
 #### 2-4-2. ST-Link
 
 To use ST-Link as a flashing tool, setting ```stm32cube``` path variable is required.
@@ -91,6 +97,24 @@ nola path=jlink:{Absolute path to STM32_Programmer_CLI}
 For Windows WSL2 users, the ```STM32_Programmer_CLI.exe``` in the Windows region must be used.
 ```
 nola path=stm32cube:/mnt/c/Program\\\ Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe
+```
+
+If you want to use the SWD interface,
+```
+nola flash=stlink:swd
+```
+
+If you want to use the ST's internal system bootloader,
+```
+nola flash=stlink:/dev/ttyUSB0
+```
+
+```
+nola flash=stlink:/dev/cu.usbmodem0000
+```
+
+```
+nola flash=stlink:com3
 ```
 
 ### 2-5. SDK Version
