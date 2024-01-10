@@ -124,7 +124,11 @@ def build(config, board=None, interface=None):
         json.dump(project, f, indent=4)
 
     project_version = get_current_version('.')
-    print(f"* Project version: {project_version['describe']}")
+    if project_version is None:
+        print(f"* Project version: unknown")
+    else:
+        print(f"* Project version: {project_version['describe']}")
+    
     libnola_version = get_current_version(repo_dir)
     print(f"* libnola version: {libnola_version['describe']}{' (dev)' if 'libnola' in config else ''}")
 
