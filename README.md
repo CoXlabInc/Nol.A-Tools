@@ -3,6 +3,23 @@
 The Nol.A-Tools is a command line interface for Nol.A-SDK.
 The Nol.A-SDK is a software development kit for IoT device firmware development.
 
+- [Installation](#installation)
+  * [Prerequisites](#prerequisites)
+  * [Install command](#install-command)
+  * [Update command](#update-command)
+- [Usage](#usage)
+  * [Login](#login)
+  * [Print information](#print-information)
+  * [Build](#build)
+    + [SDK Library Development Mode](#sdk-library-development-mode)
+  * [Flash](#flash)
+    + [J-Link](#j-link)
+    + [ST-Link](#st-link)
+  * [SDK Version](#sdk-version)
+    + [Checkout](#checkout)
+    + [Update](#update)
+  * [Path Variables](#path-variables)
+
 ## Installation
 
 ### Prerequisites
