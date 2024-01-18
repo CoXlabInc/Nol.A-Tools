@@ -42,22 +42,24 @@ def info():
         user = config['user']
     else:
         user = None
-    print(f"User: {user}")
+    print(f"* User: {user}")
 
+    if os.path.exists(repo_dir) == False:
+        print(f"* 'login' is required.", file=sys.stderr)
+        return 1
+    
     current_version, versions = get_versions(repo_dir)
-    print(f"Current version: {current_version}")
-    print(f"Avilable versions: {versions}")
+    print(f" Current version: {current_version}")
+    print(f"* Avilable versions: {versions}")
 
     boards = list(supported_boards(repo_dir))
-    print(f"Avilable boards: {boards}", file=sys.stderr)
+    print(f"* Avilable boards: {boards}", file=sys.stderr)
 
     if 'libnola' in config:
-        print(f"libnola under development: {config['libnola']}")
+        print(f"* libnola under development: {config['libnola']}")
     return 0
 
 def login(user, token):
-    #print(f"Login user:{user}, token:{token}")
-
     config = config_file.load(config_json)
     config['user'] = user
     set_key(token)
