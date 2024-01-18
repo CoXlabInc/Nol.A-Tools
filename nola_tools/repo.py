@@ -4,6 +4,9 @@ import shutil
 import git
 
 homedir = os.path.join(os.path.expanduser('~'), '.nola')
+env = {
+    "GIT_SSH_COMMAND": f"ssh -i {os.path.join(homedir, 'key')} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
+}
 
 def clone(repo_dir, user):
     if os.path.exists(repo_dir):
@@ -12,7 +15,7 @@ def clone(repo_dir, user):
     try:
         repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git",
                                    repo_dir,
-                                   env={"GIT_SSH_COMMAND": f"ssh -i {os.path.join(homedir, 'key')} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"})
+                                   env=env)
         return True
     except git.exc.GitCommandError:
         print(f"* Cloning repositry error", file=sys.stderr)
@@ -112,7 +115,7 @@ def update(repo_dir):
     repo = git.Repo(repo_dir)
     existing_versions = [t.name for t in repo.tags]
     
-    result = git.Remote(repo, 'origin').fetch()
+    result = git.Remote(repo, 'origin').fetch(env=env)
     if result[0].flags & git.remote.FetchInfo.ERROR != 0:
         print("* ERROR on update")
 
