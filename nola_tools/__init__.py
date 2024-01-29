@@ -49,7 +49,7 @@ def info():
         return 1
     
     current_version, versions = get_versions(repo_dir)
-    print(f" Current version: {current_version}")
+    print(f"* Current version: {current_version}")
     print(f"* Avilable versions: {versions}")
 
     boards = list(supported_boards(repo_dir))
@@ -72,7 +72,8 @@ def login(user, token):
 
 def logout():
     config = config_file.load(config_json)
-    del config['user']
+    if 'user' in config.keys():
+        del config['user']
     config_file.save(config, config_json)
 
     if os.path.isfile(key_file):
@@ -125,6 +126,11 @@ def devmode(path_to_libnola=None):
     return config.get('libnola')
     
 def main():
+    config = config_file.load(config_json)
+    if config.get('user') is None and os.path.exists(repo_dir) == False:
+        print("* Cloning common library...")
+        clone(repo_dir, None)
+
     parser = argparse.ArgumentParser(description=f"Nol.A-SDK Command Line Interface version {__version__}")
     parser.add_argument('command', nargs='?', help='info\nbuild[={board}], checkout[={version}], login={user}:{token}, logout, update, path={key}:{value}, devmode={path to libnola source tree}')
     args = parser.parse_args()

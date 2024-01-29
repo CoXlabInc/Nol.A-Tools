@@ -13,9 +13,13 @@ def clone(repo_dir, user):
         shutil.rmtree(repo_dir)
 
     try:
-        repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git",
-                                   repo_dir,
-                                   env=env)
+        if user is None:
+            repo = git.Repo.clone_from("ssh://git@git.coxlab.kr:40022/nola/libnola.git",
+                                       repo_dir)
+        else:
+            repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git",
+                                       repo_dir,
+                                       env=env)
         return True
     except git.exc.GitCommandError:
         print(f"* Cloning repositry error", file=sys.stderr)
@@ -65,7 +69,8 @@ def get_available_versions(repo_dir):
         versions = git.Repo(repo_dir).tags
     except git.exc.GitCommandError as e:
         return []
-    return [v.name for v in versions]
+    
+    return list(reversed([v.name for v in versions]))
 
 def get_latest_version(A, B):
     a = A.split('.')
