@@ -14,7 +14,7 @@ def clone(repo_dir, user):
 
     try:
         if user is None:
-            repo = git.Repo.clone_from("ssh://git@git.coxlab.kr:40022/nola/libnola.git",
+            repo = git.Repo.clone_from("https://git.coxlab.kr/nola/libnola.git",
                                        repo_dir)
         else:
             repo = git.Repo.clone_from(f"ssh://git@git.coxlab.kr:40022/nola/libnola-{user}.git",
