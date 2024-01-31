@@ -11,6 +11,7 @@ import os
 import json
 import shutil
 import git
+import platform
 
 from .utils import config_file
 from .build import build, clean, supported_boards
@@ -195,6 +196,7 @@ def main():
 
     elif args.command == "update":
         return update(repo_dir)
+
     elif args.command.startswith("path"):
         def print_path_help():
             print("* 'path' shows all set paths.", file=sys.stderr)
@@ -218,6 +220,30 @@ def main():
         else:
             print_path_help()
             return 1
+
+    elif args.command == "doc":
+        if platform.system() == 'Darwin':
+            open_cmd = 'open'
+        elif platform.system() == 'Linux':
+            open_cmd = 'xdg-open'
+        elif platform.system() == 'Windows':
+            open_cmd = 'start'
+        else:
+            print(f"* Unsupported platform: {platform.system()}", file=sys.stderr)
+            return 1
+
+        config = config_file.load(config_json)
+        if 'libnola' in config:
+            doc_file = os.path.join(config['libnola'], 'nola-sdk', 'doc', 'html', 'index.html')
+        else:
+            doc_file = os.path.join(repo_dir, 'doc', 'html', 'index.html')
+        
+        if os.path.exists(doc_file):
+            return os.system(f"{open_cmd} {doc_file}")
+        else:
+            print(f"* The doc file ({doc_file}) is not found.", file=sys.stderr)
+            return 1
+
     elif args.command.startswith('devmode'):
         def print_devmode_help():
             print("* 'devmode' shows the libnola source path to build.", file=sys.stderr)
