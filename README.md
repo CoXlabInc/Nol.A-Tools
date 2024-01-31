@@ -19,6 +19,7 @@ The Nol.A-SDK is a software development kit for IoT device firmware development.
     + [Checkout](#checkout)
     + [Update](#update)
   * [Path Variables](#path-variables)
+  * [Documentation](#documentation)
 
 ## Installation
 
@@ -162,4 +163,10 @@ nola path={key}:{value}
 You can also retrieve all specified paths like below:
 ```
 nola path
+```
+
+### Documentation
+You can open the SDK API book by simply typing below:
+```
+nola doc
 ```
