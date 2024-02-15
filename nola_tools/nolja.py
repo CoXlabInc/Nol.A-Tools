@@ -3,8 +3,15 @@ import serial
 import binascii
 import argparse
 from pbr.version import VersionInfo
+import json
+import getpass
+import base64
+import time
 
-def receiveMessage(ser):
+def receiveMessage():
+    if format != 'bootloader':
+        return None
+    
     garbage = bytearray(b'')
     while True:
         r = ser.read(1)
@@ -47,55 +54,104 @@ def receiveMessage(ser):
     else:
         return message
 
-def sendMessage(ser, data, waitTime):
-    msg = bytearray(b'\x80')
-    msg.append((len(data) >> 0) & 0xFF)
-    msg.append((len(data) >> 8) & 0xFF)
-    msg += data
-    crc = binascii.crc_hqx(data, 0xffff)
-    msg.append((crc >> 0) & 0xFF)
-    msg.append((crc >> 8) & 0xFF)
-    ser.reset_input_buffer()
-    ser.timeout = waitTime
-    ser.write(msg)
-    ser.flush()
-    r = ser.read(1)
-    if r[0] == 0x00:  #ack
-        return receiveMessage(ser)
-    else:
-        print(f"No ack: {r}", file=sys.stderr)
-        return None
+def sendMessage(data, waitTime):
+    if format == 'bootloader':
+        msg = bytearray(b'\x80')
+        msg.append((len(data) >> 0) & 0xFF)
+        msg.append((len(data) >> 8) & 0xFF)
+        msg += data
+        crc = binascii.crc_hqx(data, 0xffff)
+        msg.append((crc >> 0) & 0xFF)
+        msg.append((crc >> 8) & 0xFF)
+        ser.reset_input_buffer()
+        ser.timeout = waitTime
+        ser.write(msg)
+        ser.flush()
+        r = ser.read(1)
+        if len(r) > 0 and r[0] == 0x00:  #ack
+            return receiveMessage(ser)
+        else:
+            print(f"No ack: {r}", file=sys.stderr)
+            return None
+    elif format == 'json':
+        global password
+        if len(password) > 0:
+            data = f"{password} {data}"
+        ser.reset_input_buffer()
+        ser.timeout = waitTime
+        ser.write(data.encode('ascii'))
+        ser.flush()
+        r = ser.readline()
+        if len(r) > 0:
+            try:
+                message = json.loads(r)
+            except:
+                print(f"Unexpected resonpose: {r}", file=sys.stderr)
+                return None
 
-def sendGetEui64(ser):
-    msg = bytearray(b'\x1c')
-    resp = sendMessage(ser, msg, 1)
-    if resp is not None and len(resp) == 9 and resp[0] == 0x3A:
-        return resp[1:]
-    else:
-        return None
-    
-def sendMassErase(ser):
-    msg = bytearray(b'\x15')
-    resp = sendMessage(ser, msg, 1)
-    if resp == b'\x3B\x00':
+            result = message.get('result')
+            if result == 'OK':
+                return message
+            elif result == 'not authorized':
+                password = getpass.getpass()
+                return message
+            else:
+                return message
+    return None
+        
+def sendGetEui64():
+    if format == 'bootloader':
+        msg = bytearray(b'\x1c')
+        resp = sendMessage(msg, 1)
+        if resp is not None and len(resp) == 9 and resp[0] == 0x3A:
+            return resp[1:]
+        else:
+            return None
+    elif format == 'json':
+        msg = 'get deveui\r\n'
+        resp = sendMessage(msg, 1)
+
+        try:
+            return bytes.fromhex(resp.get('deveui'))
+        except:
+            return None
+        
+def sendMassErase():
+    if format == 'bootloader':
+        msg = bytearray(b'\x15')
+        resp = sendMessage(msg, 1)
+        if resp == b'\x3B\x00':
+            return True
+        else:
+            return False
+    return False
+
+def sendDataBlock(addr, data, name=None):
+    if format == 'bootloader':
+        msg = bytearray(b'\x10')
+        msg.append((addr >> 0) & 0xFF)
+        msg.append((addr >> 8) & 0xFF)
+        msg.append((addr >> 16) & 0xFF)
+        msg += data
+        resp = sendMessage(msg, 1)
+        #print(f'sendDataBlock {resp} (size:{4+len(data)})')
+        if resp == b'\x3B\x00':
+            return True
+        else:
+            return False
+    elif format == 'json':
+        if name is None:
+            return False
+        data = base64.b64encode(data).decode('ascii')
+        msg = f"savefile fw/{name} {addr} {data}\r\n"
+        resp = sendMessage(msg, 5)
+        if resp is None or resp.get('result') != 'OK':
+            print(f"  Sending data block failed ({resp})", file=sys.stderr)
+            return False
         return True
-    else:
-        return False
+    return False
 
-def sendDataBlock(ser, addr, data):
-    msg = bytearray(b'\x10')
-    msg.append((addr >> 0) & 0xFF)
-    msg.append((addr >> 8) & 0xFF)
-    msg.append((addr >> 16) & 0xFF)
-    msg += data
-    resp = sendMessage(ser, msg, 1)
-    #print(f'sendDataBlock {resp} (size:{4+len(data)})')
-    if resp == b'\x3B\x00':
-        return True
-    else:
-        return False
-
-def sendCRCCheck(ser, addr, length):
+def sendCRCCheck(addr, length):
     msg = bytearray(b'\x16')
     msg.append((addr >> 0) & 0xFF)
     msg.append((addr >> 8) & 0xFF)
@@ -103,28 +159,45 @@ def sendCRCCheck(ser, addr, length):
     msg.append((length >> 0) & 0xFF)
     msg.append((length >> 8) & 0xFF)
     msg.append((length >> 16) & 0xFF)
-    resp = sendMessage(ser, msg, 10)
+    resp = sendMessage(msg, 10)
     #print(f'sendCRCCheck {resp}')
     if resp is not None and len(resp) == 3 and resp[0] == 0x3A:
         return resp[1] + (resp[2] << 8)
     else:
         return None
 
-def sendReset(ser, eui=None):
-    msg = bytearray(b'\x17')
-    if eui is not None:
-        msg += eui
-    resp = sendMessage(ser, msg, 3)
-    #print('sendReset<', ' '.join("%02x" % b for b in resp))
-    if resp == b'\x3B\x00':
+def sendReset(eui=None):
+    if format == 'bootloader':
+        msg = bytearray(b'\x17')
+        if eui is not None:
+            msg += eui
+        resp = sendMessage(msg, 3)
+        #print('sendReset<', ' '.join("%02x" % b for b in resp))
+        if resp == b'\x3B\x00':
+            return True
+        else:
+            return False
+    elif format == 'json':
+        if eui is not None:
+            msg = f'set deveui {eui.hex()}\r\n'
+            resp = sendMessage(msg, 3)
+            if resp is None or resp.get('result') != 'OK':
+                print(f"  Setting with the New EUI-64 failed ({resp.get('result')})", file=sys.stderr)
+                return False
+
+        msg = f"reboot\r\n"
+        resp = sendMessage(msg, 3)
+        if resp is None or resp.get('result') != 'OK':
+            print(f"  Invoking reboot failed ({resp.get('result')})", file=sys.stderr)
+            return False
         return True
-    else:
-        return False
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description=f"Nol.ja flasher for boards supported by Nol.A version {VersionInfo('nola_tools').release_string()}")
     parser.add_argument('serial', nargs='?', help='A serial port connected with the board to be flashed (e.g., /dev/ttyUSB0, COM3, ...)')
-    parser.add_argument('--flash', type=argparse.FileType('rb'), nargs=1, help='A binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='bin file')
+    parser.add_argument('--flash', type=argparse.FileType('rb'), nargs=1, help='A binary file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='file')
+    parser.add_argument('--region', nargs=1, help='A region name where the file is flashed on (e.g., main, bootloader, model, ...)', metavar='region')
     parser.add_argument('--eui', nargs=1, help='Set the new EUI-64. The EUI-64 must be a 64-bit hexadecimal string. (e.g., 0011223344556677)', metavar='EUI-64')
     args = parser.parse_args()
 
@@ -141,6 +214,8 @@ def main():
     else:
         new_eui = None    
 
+    global ser
+    
     try:
         ser = serial.Serial(port=args.serial,
                             baudrate=115200,
@@ -153,31 +228,69 @@ def main():
         parser.print_help()
         return 1
 
-    eui = sendGetEui64(ser)
+    global format
+    global password
+    format = 'bootloader'
+    password = ''
+
+    eui = sendGetEui64()
     if eui == None:
-        print("* Getting EUI-64 failed", file=sys.stderr)
-        return 2
+        format = 'json'
+        prev_password = password
+        eui = sendGetEui64()
+        if eui == None:
+            if prev_password != password:
+                eui = sendGetEui64() # try again with password
+                if eui == None:
+                    print("* Getting EUI-64 failed", file=sys.stderr)
+                    return 2
+            else:
+                print("* Getting EUI-64 failed", file=sys.stderr)
+                return 2
+        else:
+            print("* 'JSON' format detected")
     
     print(f"* EUI-64: {eui[0]:02X}-{eui[1]:02X}-{eui[2]:02X}-{eui[3]:02X}-{eui[4]:02X}-{eui[5]:02X}-{eui[6]:02X}-{eui[7]:02X}")
 
+    
     if args.flash != None:
         image = args.flash[0].read()
 
-        print('* Mass erasing...')
-        if sendMassErase(ser) == False:
-            print(" Mass erase failed", file=sys.stderr)
-            return 3
-        print("  Mass erase done")
+        if format == 'bootloader':
+            blocksize = 256
+            print('* Mass erasing...')
+            if sendMassErase() == False:
+                print(" Mass erase failed", file=sys.stderr)
+                return 3
+            print("  Mass erase done")
+        elif format == 'json':
+            blocksize = 200
+            if args.region is not None:
+                name = args.region[0]
+            else:
+                print(f"* The region name must be specified by using the '--region' option for the target.")
+                return 1
 
         addr = 0
         printed = 0
 
-        while True:
-            block = image[addr : min(addr+256, len(image))]
+        time_start = time.time()
+        num_retry = 0
+        while addr < len(image):
+            block = image[addr : min(addr+blocksize, len(image))]
 
-            if sendDataBlock(ser, addr, block) == False:
-                print('* Communication Error', file=sys.stderr)
-                return 4
+            if sendDataBlock(addr, block, name) == False:
+                if format == 'json':
+                    num_retry += 1
+                    if blocksize > 10:
+                        blocksize -= 10
+                    continue
+                else:
+                    print('* Communication Error', file=sys.stderr)
+                    return 4
+            else:
+                if format == 'json':
+                    blocksize += 50
 
             addr += len(block)
 
@@ -186,32 +299,34 @@ def main():
                 printed -= 1
                 print(end='\r')
 
-            p = '* Flashing: %.2f %% (%u / %u)' % (addr * 100. / len(image), addr, len(image))
+            time_now = time.time()
+            
+            p = '* Flashing: %.2f %% (%u / %u, %f bps, %d retrials, block size: %d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), num_retry, blocksize)
             printed = len(p)
             print(p, end='\r', flush=True)
 
-            if addr >= len(image):
-                break
+        print(f'\n  Flashing done ({time_now - time_start} seconds)')
 
-        print('\n  Flashing done')
+        if format == 'bootloader':
+            devCrc = sendCRCCheck(0, len(image))
+            myCrc = binascii.crc_hqx(image, 0xFFFF)
 
-        devCrc = sendCRCCheck(ser, 0, len(image))
-        myCrc = binascii.crc_hqx(image, 0xFFFF)
+            if myCrc != devCrc:
+                print('* Integrity check failed.', file=sys.stderr)
+                print('  CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
+                return 5
 
-        if myCrc != devCrc:
-            print('* Integrity check failed.', file=sys.stderr)
-            print('  CRC:0x%04x expected, but 0x%04x' % (myCrc, devCrc), file=sys.stderr)
-            return 5
-
-        print('* Integrity check passed.')
+            print('* Integrity check passed.')
+        #elif format == 'json':
+            
 
     if args.flash != None or new_eui is not None:
         if new_eui == None:
             print('* Resetting...')
-            result = sendReset(ser)
+            result = sendReset()
         else:
             print(f'* Resetting with new EUI-64 {new_eui[0]:02X}-{new_eui[1]:02X}-{new_eui[2]:02X}-{new_eui[3]:02X}-{new_eui[4]:02X}-{new_eui[5]:02X}-{new_eui[6]:02X}-{new_eui[7]:02X} ...')
-            result = sendReset(ser, new_eui)
+            result = sendReset(new_eui)
 
         if result == True:
             print('  Reset done')
