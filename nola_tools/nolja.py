@@ -81,22 +81,25 @@ def sendMessage(data, waitTime):
         ser.timeout = waitTime
         ser.write(data.encode('ascii'))
         ser.flush()
-        r = ser.readline()
-        if len(r) > 0:
-            try:
-                message = json.loads(r)
-            except:
-                print(f"Unexpected resonpose: {r}", file=sys.stderr)
+        while True:
+            r = ser.readline()
+            if len(r) > 0:
+                try:
+                    message = json.loads(r)
+                    break
+                except:
+                    continue
+            else:
                 return None
 
-            result = message.get('result')
-            if result == 'OK':
-                return message
-            elif result == 'not authorized':
-                password = getpass.getpass()
-                return message
-            else:
-                return message
+        result = message.get('result')
+        if result == 'OK':
+            return message
+        elif result == 'not authorized' and len(password) == 0:
+            password = getpass.getpass()
+            return message
+        else:
+            return message
     return None
         
 def sendGetEui64():
@@ -142,11 +145,17 @@ def sendDataBlock(addr, data, name=None):
     elif format == 'json':
         if name is None:
             return False
-        data = base64.b64encode(data).decode('ascii')
-        msg = f"savefile fw/{name} {addr} {data}\r\n"
+        data_encoded = base64.b64encode(data).decode('ascii')
+        msg = f"savefile fw/{name} {addr} {data_encoded}\r\n"
         resp = sendMessage(msg, 5)
-        if resp is None or resp.get('result') != 'OK':
-            print(f"  Sending data block failed ({resp})", file=sys.stderr)
+        if resp is None:
+            print(f"\n  Sending data block failed (no response)", file=sys.stderr)
+            return False
+        elif resp.get('command') != msg[:-2]:
+            print(f"\n  Sending data block failed (data mismatch)", file=sys.stderr)
+            return False
+        elif resp.get('result') != 'OK':
+            print(f"\n  Sending data block failed ({resp.get('result')})", file=sys.stderr)
             return False
         return True
     return False
@@ -264,7 +273,8 @@ def main():
                 return 3
             print("  Mass erase done")
         elif format == 'json':
-            blocksize = 200
+            blocksize = 50
+            max_blocksize = 1000
             if args.region is not None:
                 name = args.region[0]
             else:
@@ -275,35 +285,36 @@ def main():
         printed = 0
 
         time_start = time.time()
-        num_retry = 0
+
         while addr < len(image):
             block = image[addr : min(addr+blocksize, len(image))]
 
             if sendDataBlock(addr, block, name) == False:
                 if format == 'json':
-                    num_retry += 1
+                    max_blocksize = min(blocksize - 1, max_blocksize)
+
                     if blocksize > 10:
-                        blocksize -= 10
+                        blocksize -= 1
                     continue
                 else:
                     print('* Communication Error', file=sys.stderr)
                     return 4
             else:
                 if format == 'json':
-                    blocksize += 50
+                    blocksize = min(blocksize + 1, max_blocksize)
 
             addr += len(block)
 
+            print(end='\r')
             while printed > 0:
                 print(' ', end='')
                 printed -= 1
-                print(end='\r')
 
             time_now = time.time()
             
-            p = '* Flashing: %.2f %% (%u / %u, %f bps, %d retrials, block size: %d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), num_retry, blocksize)
-            printed = len(p)
-            print(p, end='\r', flush=True)
+            p = '\r* Flashing: %.2f %% (%u / %u, %f bps, block size: %d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), blocksize)
+            printed = len(p) - 1
+            print(p, end='', flush=True)
 
         print(f'\n  Flashing done ({time_now - time_start} seconds)')
 
