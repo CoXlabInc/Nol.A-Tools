@@ -121,13 +121,21 @@ def sendGetEui64():
         except:
             return None
         
-def sendMassErase():
+def sendMassErase(name=None):
     if format == 'bootloader':
         msg = bytearray(b'\x15')
         resp = sendMessage(msg, 1)
         if resp == b'\x3B\x00':
             return True
         else:
+            return False
+    elif format == 'json' and name is not None:
+        msg = f'delfile fw/{name}\r\n'
+        resp = sendMessage(msg, 2)
+        if resp is not None and resp.get('command') == msg[:-2] and resp.get('result') == 'OK':
+            return True
+        else:
+            print(f"* resp:{resp}")
             return False
     return False
 
@@ -188,7 +196,7 @@ def sendMD5Check(name):
     else:
         return resp.get('md5')
 
-def sendReset(eui=None):
+def sendReset(eui=None, name=None):
     if format == 'bootloader':
         msg = bytearray(b'\x17')
         if eui is not None:
@@ -207,8 +215,11 @@ def sendReset(eui=None):
                 print(f"  Setting with the New EUI-64 failed ({resp.get('result')})", file=sys.stderr)
                 return False
 
-        msg = f"reboot\r\n"
-        resp = sendMessage(msg, 3)
+        if name is None:
+            msg = f"reboot\r\n"
+        else:
+            msg = f"fwupdate {name}\r\n"
+        resp = sendMessage(msg, 20)
         if resp is None or resp.get('result') != 'OK':
             print(f"  Invoking reboot failed ({resp.get('result')})", file=sys.stderr)
             return False
@@ -294,6 +305,11 @@ def main():
             else:
                 print(f"* The region name must be specified by using the '--region' option for the target.")
                 return 1
+
+            if sendMassErase(name) == False:
+                print(" Delete existing file failed", file=sys.stderr)
+                return 3
+
             md5 = hashlib.md5()
 
         addr = 0
@@ -361,12 +377,10 @@ def main():
     if args.flash != None or new_eui is not None:
         if new_eui == None:
             print('* Resetting...')
-            result = sendReset()
         else:
             print(f'* Resetting with new EUI-64 {new_eui[0]:02X}-{new_eui[1]:02X}-{new_eui[2]:02X}-{new_eui[3]:02X}-{new_eui[4]:02X}-{new_eui[5]:02X}-{new_eui[6]:02X}-{new_eui[7]:02X} ...')
-            result = sendReset(new_eui)
 
-        if result == True:
+        if sendReset(new_eui, name):
             print('  Reset done')
         else:
             print('  Reset error', file=sys.stderr)
