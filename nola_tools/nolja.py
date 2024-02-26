@@ -7,6 +7,7 @@ import json
 import getpass
 import base64
 import time
+import math
 
 def receiveMessage():
     if format != 'bootloader':
@@ -261,7 +262,6 @@ def main():
     
     print(f"* EUI-64: {eui[0]:02X}-{eui[1]:02X}-{eui[2]:02X}-{eui[3]:02X}-{eui[4]:02X}-{eui[5]:02X}-{eui[6]:02X}-{eui[7]:02X}")
 
-    
     if args.flash != None:
         image = args.flash[0].read()
 
@@ -273,8 +273,10 @@ def main():
                 return 3
             print("  Mass erase done")
         elif format == 'json':
-            blocksize = 50
-            max_blocksize = 1000
+            blocksize = 150
+            num_fail = 0
+            num_continuous_success = 0
+            
             if args.region is not None:
                 name = args.region[0]
             else:
@@ -291,8 +293,8 @@ def main():
 
             if sendDataBlock(addr, block, name) == False:
                 if format == 'json':
-                    max_blocksize = min(blocksize - 1, max_blocksize)
-
+                    num_fail += 1
+                    num_continuous_success = 0
                     if blocksize > 10:
                         blocksize -= 1
                     continue
@@ -301,7 +303,9 @@ def main():
                     return 4
             else:
                 if format == 'json':
-                    blocksize = min(blocksize + 1, max_blocksize)
+                    num_continuous_success += 1
+                    if math.pow(2, num_fail) < num_continuous_success:
+                        blocksize += 1
 
             addr += len(block)
 
@@ -312,7 +316,7 @@ def main():
 
             time_now = time.time()
             
-            p = '\r* Flashing: %.2f %% (%u / %u, %f bps, block size: %d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), blocksize)
+            p = '\r* Flashing: %.2f %% (%u / %u, %f bps, block size: %d, thr:%d, #s:%d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), blocksize, int(math.pow(2, num_fail)), num_continuous_success)
             printed = len(p) - 1
             print(p, end='', flush=True)
 
