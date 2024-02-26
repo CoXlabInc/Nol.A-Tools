@@ -8,6 +8,7 @@ import getpass
 import base64
 import time
 import math
+import hashlib
 
 def receiveMessage():
     if format != 'bootloader':
@@ -156,8 +157,7 @@ def sendDataBlock(addr, data, name=None):
             print(f"\n  Sending data block failed (data mismatch)", file=sys.stderr)
             return False
         elif resp.get('result') != 'OK':
-            print(f"\n  Sending data block failed ({resp.get('result')})", file=sys.stderr)
-            return False
+            raise Exception(f"Sending data block failed ({resp.get('result')})")
         return True
     return False
 
@@ -175,6 +175,18 @@ def sendCRCCheck(addr, length):
         return resp[1] + (resp[2] << 8)
     else:
         return None
+
+def sendMD5Check(name):
+    msg = f"md5 fw/{name}\r\n"
+    resp = sendMessage(msg, 10)
+    if resp is None:
+        print("* MD5 no response")
+        return None
+    elif resp.get('result') != 'OK' or resp.get('command') != msg[:-2]:
+        print(f"* MD5 response failed: {resp}")
+        return None
+    else:
+        return resp.get('md5')
 
 def sendReset(eui=None):
     if format == 'bootloader':
@@ -282,6 +294,7 @@ def main():
             else:
                 print(f"* The region name must be specified by using the '--region' option for the target.")
                 return 1
+            md5 = hashlib.md5()
 
         addr = 0
         printed = 0
@@ -290,6 +303,14 @@ def main():
 
         while addr < len(image):
             block = image[addr : min(addr+blocksize, len(image))]
+
+            try:
+                time_now = time.time()
+                p = f'\r* Flashing: {addr * 100. / len(image):.2f} %% ({addr} / {len(image)}, {addr / (time_now - time_start):.02f} bps, block size: {blocksize}, thr:{int(math.pow(2, num_fail))}, #s:{num_continuous_success})'
+                printed = len(p) - 1
+                print(p, end='', flush=True)
+            except:
+                printed = 0
 
             if sendDataBlock(addr, block, name) == False:
                 if format == 'json':
@@ -303,6 +324,7 @@ def main():
                     return 4
             else:
                 if format == 'json':
+                    md5.update(block)
                     num_continuous_success += 1
                     if math.pow(2, num_fail) < num_continuous_success:
                         blocksize += 1
@@ -313,12 +335,6 @@ def main():
             while printed > 0:
                 print(' ', end='')
                 printed -= 1
-
-            time_now = time.time()
-            
-            p = '\r* Flashing: %.2f %% (%u / %u, %f bps, block size: %d, thr:%d, #s:%d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), blocksize, int(math.pow(2, num_fail)), num_continuous_success)
-            printed = len(p) - 1
-            print(p, end='', flush=True)
 
         print(f'\n  Flashing done ({time_now - time_start} seconds)')
 
@@ -332,8 +348,15 @@ def main():
                 return 5
 
             print('* Integrity check passed.')
-        #elif format == 'json':
-            
+        elif format == 'json':
+            devMD5 = sendMD5Check(name)
+            myMD5 = md5.hexdigest()
+            if devMD5 != myMD5:
+                print('* Integrity check failed.', file=sys.stderr)
+                print(f'  MD5:{myMD5} expected, but {devMD5}')
+                return 5
+
+            print('* Integrity check passed.')
 
     if args.flash != None or new_eui is not None:
         if new_eui == None:
