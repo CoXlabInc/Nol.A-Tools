@@ -14,6 +14,7 @@ import random
 import base64
 import hashlib
 import os
+import time
 
 MESSAGE_TYPE_SEND = 0
 MESSAGE_TYPE_MD5 = 1
@@ -37,6 +38,68 @@ def on_connect(client, userdata, flags, reason_code, properties):
   else:
     print(f"Connect OK! Subscribe Start")
 
+async def periodic_check_downlink_status(key):
+  group, device = key.split(':')
+  my_fcnt = state[key]['f_cnt']
+  my_seq = state[key]['seq']
+  
+  while True:
+    try:
+      success, response = await pyiotown.get.async_command(http_url,
+                                                           state[key]['token'],
+                                                           device,
+                                                           verify=False)
+    except Exception as e:
+      print(e)
+      continue
+    sent = True
+    for c in response['command']:
+      if c.get('fCnt') == my_fcnt:
+        sent = False
+        break
+    print(f"[{key}] downlink status for fCnt '{my_fcnt}', seq '{state[key]['seq']}': {response} => {'sent' if sent else 'not sent'}")
+    if sent:
+      break
+    else:
+      await asyncio.sleep(1)
+      continue
+
+  time_start = time.time()
+  time_now = time.time()
+  result_notified = False
+  while time_now < time_start + 20:
+    if state[key]['f_cnt'] == my_fcnt:
+      await asyncio.sleep(0.1)
+      time_now = time.time()
+    else:
+      # result notified
+      print(f"[{key}] fCnt '{my_fcnt}' result notified")
+      result_notified = True
+      break
+
+  if result_notified == False:
+    print(f"[{key}] ack wait timeout")
+    if state[key].get('last_send_size') is not None:
+      state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
+    request_send_data(group, device, state[key]['chunk_size'])
+    return
+
+  time_start = time.time()
+  time_now = time.time()
+  while time_now < time_start + 60:
+    if state[key]['seq'] == my_seq:
+      await asyncio.sleep(1)
+      time_now = time.time()
+    else:
+      print(f"[{key}] seq '{my_seq}' passed")
+      return
+
+  print(f"[{key}] answer wait timeout")
+  state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
+  if state[key].get('last_send_size') is not None:
+    state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
+  request_send_data(group, device, state[key]['chunk_size'])
+
 def on_command_posted(future):
   if future.exception() is None:
     for key in state.keys():
@@ -44,18 +107,21 @@ def on_command_posted(future):
         result = future.result()
         print(f"[{key}] posting command result:", result)
         state[key]['future'] = None
-        message = json.loads(result[1])
+        message = result[1]
         if result[0] == False or message.get('fCnt') is None:
           print(f"[{key}] command API fail, offset:{state[key]['image'].tell()}")
           sys.exit(4)
         state[key]['f_cnt'] = message['fCnt']
+        
+        asyncio.run_coroutine_threadsafe(periodic_check_downlink_status(key), event_loop)
+
         return
   else:
     print(f"Future({future}) exception:", future.exception())
 
 def request_md5_request(group, device):
   key = f"{group}:{device}"
-  request = bytearray([MESSAGE_TYPE_MD5, state[key]['seq'], state[key]['session']])
+  request = bytes([MESSAGE_TYPE_MD5, state[key]['seq'], state[key]['session']])
   future = asyncio.run_coroutine_threadsafe(pyiotown.post.async_command(http_url,
                                                                         state[key]['token'],
                                                                         device,
@@ -115,8 +181,11 @@ def on_message(client, userdata, message):
   message_type = topic_blocks[5]
 
   # print(message.topic, m)
-  if message_type == 'ack':
+  if message_type == 'boot':
+    print(message.topic, m)
+  elif message_type == 'ack':
     if state[key]['f_cnt'] == m['fCnt']:
+      state[key]['f_cnt'] = None
       if m['errorMsg'] != '':
         print(f"[{key}] Error on LoRa: {m['errorMsg']}")
         if state[key].get('last_send_size') is not None:
@@ -162,7 +231,7 @@ def on_message(client, userdata, message):
         if answer_result in [ RESULT_OK, RESULT_ERROR_DUPLICATE_MESSAGE ]:
           total_size = os.fstat(state[key]['image'].fileno()).st_size
           current_pos = state[key]['image'].tell()
-          print(f"[{key}] send data success. {current_pos}/{total_size}={current_pos / total_size * 100:.2f}%")
+          print(f"[{key}] send data success. {current_pos / total_size * 100:.2f}% ({current_pos}/{total_size})")
         else:
           print(f"[{key}] send data fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
           if state[key].get('last_send_size') is not None:
@@ -191,7 +260,7 @@ def on_message(client, userdata, message):
             print(f"[{key}] MD5 expected: {md5_expected}")
         else:
           print(f"[{key}] MD5 fail returned: {answer_result}")
-        
+    
 def main():
   parser = argparse.ArgumentParser(description=f"Nalja Firmware Update Over The Air (FUOTA) tool for devices in IOTOWN {VersionInfo('nola_tools').release_string()}")
   parser.add_argument('iotown', help='An IOTOWN MQTT URL to connect (e.g., mqtts://{username}:{token}@town.coxlab.kr)')
@@ -231,6 +300,7 @@ def main():
     return 1
 
   client.subscribe([(f"iotown/rx/{args.group}/device/{device}/ack", 2),
+                    (f"iotown/rx/{args.group}/device/{device}/boot", 2),
                     (f"iotown/rx/{args.group}/device/{device}/data", 2)])
 
   def message_loop(client):
@@ -249,7 +319,7 @@ def main():
     'seq': seq,
     'session': 0 if args.region is None else int(args.region),
     'image': args.image[0],
-    'f_cnt': -1,
+    'f_cnt': None,
     'chunk_size': 200
   }
   
