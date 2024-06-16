@@ -7,6 +7,8 @@ import json
 import getpass
 import base64
 import time
+import math
+import hashlib
 
 def receiveMessage():
     if format != 'bootloader':
@@ -119,13 +121,21 @@ def sendGetEui64():
         except:
             return None
         
-def sendMassErase():
+def sendMassErase(name=None):
     if format == 'bootloader':
         msg = bytearray(b'\x15')
         resp = sendMessage(msg, 1)
         if resp == b'\x3B\x00':
             return True
         else:
+            return False
+    elif format == 'json' and name is not None:
+        msg = f'delfile fw/{name}\r\n'
+        resp = sendMessage(msg, 2)
+        if resp is not None and resp.get('command') == msg[:-2] and resp.get('result') == 'OK':
+            return True
+        else:
+            print(f"* resp:{resp}")
             return False
     return False
 
@@ -155,8 +165,7 @@ def sendDataBlock(addr, data, name=None):
             print(f"\n  Sending data block failed (data mismatch)", file=sys.stderr)
             return False
         elif resp.get('result') != 'OK':
-            print(f"\n  Sending data block failed ({resp.get('result')})", file=sys.stderr)
-            return False
+            raise Exception(f"Sending data block failed ({resp.get('result')})")
         return True
     return False
 
@@ -175,7 +184,19 @@ def sendCRCCheck(addr, length):
     else:
         return None
 
-def sendReset(eui=None):
+def sendMD5Check(name):
+    msg = f"md5 fw/{name}\r\n"
+    resp = sendMessage(msg, 10)
+    if resp is None:
+        print("* MD5 no response")
+        return None
+    elif resp.get('result') != 'OK' or resp.get('command') != msg[:-2]:
+        print(f"* MD5 response failed: {resp}")
+        return None
+    else:
+        return resp.get('md5')
+
+def sendReset(eui=None, name=None):
     if format == 'bootloader':
         msg = bytearray(b'\x17')
         if eui is not None:
@@ -194,8 +215,11 @@ def sendReset(eui=None):
                 print(f"  Setting with the New EUI-64 failed ({resp.get('result')})", file=sys.stderr)
                 return False
 
-        msg = f"reboot\r\n"
-        resp = sendMessage(msg, 3)
+        if name is None:
+            msg = f"reboot\r\n"
+        else:
+            msg = f"fwupdate {name}\r\n"
+        resp = sendMessage(msg, 20)
         if resp is None or resp.get('result') != 'OK':
             print(f"  Invoking reboot failed ({resp.get('result')})", file=sys.stderr)
             return False
@@ -261,7 +285,6 @@ def main():
     
     print(f"* EUI-64: {eui[0]:02X}-{eui[1]:02X}-{eui[2]:02X}-{eui[3]:02X}-{eui[4]:02X}-{eui[5]:02X}-{eui[6]:02X}-{eui[7]:02X}")
 
-    
     if args.flash != None:
         image = args.flash[0].read()
 
@@ -273,13 +296,21 @@ def main():
                 return 3
             print("  Mass erase done")
         elif format == 'json':
-            blocksize = 50
-            max_blocksize = 1000
+            blocksize = 150
+            num_fail = 0
+            num_continuous_success = 0
+            
             if args.region is not None:
                 name = args.region[0]
             else:
                 print(f"* The region name must be specified by using the '--region' option for the target.")
                 return 1
+
+            if sendMassErase(name) == False:
+                print(" Delete existing file failed", file=sys.stderr)
+                return 3
+
+            md5 = hashlib.md5()
 
         addr = 0
         printed = 0
@@ -289,10 +320,18 @@ def main():
         while addr < len(image):
             block = image[addr : min(addr+blocksize, len(image))]
 
+            try:
+                time_now = time.time()
+                p = f'\r* Flashing: {addr * 100. / len(image):.2f} %% ({addr} / {len(image)}, {addr / (time_now - time_start):.02f} bps, block size: {blocksize}, thr:{int(math.pow(2, num_fail))}, #s:{num_continuous_success})'
+                printed = len(p) - 1
+                print(p, end='', flush=True)
+            except:
+                printed = 0
+
             if sendDataBlock(addr, block, name) == False:
                 if format == 'json':
-                    max_blocksize = min(blocksize - 1, max_blocksize)
-
+                    num_fail += 1
+                    num_continuous_success = 0
                     if blocksize > 10:
                         blocksize -= 1
                     continue
@@ -301,7 +340,10 @@ def main():
                     return 4
             else:
                 if format == 'json':
-                    blocksize = min(blocksize + 1, max_blocksize)
+                    md5.update(block)
+                    num_continuous_success += 1
+                    if math.pow(2, num_fail) < num_continuous_success:
+                        blocksize += 1
 
             addr += len(block)
 
@@ -309,12 +351,6 @@ def main():
             while printed > 0:
                 print(' ', end='')
                 printed -= 1
-
-            time_now = time.time()
-            
-            p = '\r* Flashing: %.2f %% (%u / %u, %f bps, block size: %d)' % (addr * 100. / len(image), addr, len(image), addr / (time_now - time_start), blocksize)
-            printed = len(p) - 1
-            print(p, end='', flush=True)
 
         print(f'\n  Flashing done ({time_now - time_start} seconds)')
 
@@ -328,18 +364,23 @@ def main():
                 return 5
 
             print('* Integrity check passed.')
-        #elif format == 'json':
-            
+        elif format == 'json':
+            devMD5 = sendMD5Check(name)
+            myMD5 = md5.hexdigest()
+            if devMD5 != myMD5:
+                print('* Integrity check failed.', file=sys.stderr)
+                print(f'  MD5:{myMD5} expected, but {devMD5}')
+                return 5
+
+            print('* Integrity check passed.')
 
     if args.flash != None or new_eui is not None:
         if new_eui == None:
             print('* Resetting...')
-            result = sendReset()
         else:
             print(f'* Resetting with new EUI-64 {new_eui[0]:02X}-{new_eui[1]:02X}-{new_eui[2]:02X}-{new_eui[3]:02X}-{new_eui[4]:02X}-{new_eui[5]:02X}-{new_eui[6]:02X}-{new_eui[7]:02X} ...')
-            result = sendReset(new_eui)
 
-        if result == True:
+        if sendReset(new_eui, name):
             print('  Reset done')
         else:
             print('  Reset error', file=sys.stderr)
