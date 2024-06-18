@@ -43,7 +43,8 @@ async def periodic_check_downlink_status(key):
   my_fcnt = state[key]['f_cnt']
   my_seq = state[key]['seq']
   
-  while True:
+  result_notified = False
+  while my_fcnt == state[key]['f_cnt'] and my_seq == state[key]['seq']:
     try:
       success, response = await pyiotown.get.async_command(http_url,
                                                            state[key]['token'],
@@ -57,7 +58,7 @@ async def periodic_check_downlink_status(key):
       if c.get('fCnt') == my_fcnt:
         sent = False
         break
-    print(f"[{key}] downlink status for fCnt '{my_fcnt}', seq '{state[key]['seq']}': {response} => {'sent' if sent else 'not sent'}")
+    print(f"[{key}] downlink status for fCnt '{my_fcnt}', seq '{my_seq}': {response} => {'sent' if sent else 'not sent'}")
     if sent:
       break
     else:
@@ -66,8 +67,7 @@ async def periodic_check_downlink_status(key):
 
   time_start = time.time()
   time_now = time.time()
-  result_notified = False
-  while time_now < time_start + 20:
+  while result_notified == False and time_now < time_start + 20:
     if state[key]['f_cnt'] == my_fcnt:
       await asyncio.sleep(0.1)
       time_now = time.time()
@@ -78,27 +78,25 @@ async def periodic_check_downlink_status(key):
       break
 
   if result_notified == False:
-    print(f"[{key}] ack wait timeout")
-    if state[key].get('last_send_size') is not None:
-      state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
-    request_send_data(group, device, state[key]['chunk_size'])
+    post_command(group, device, state[key]['last_message'])
+    print(f"[{key}] ack wait timeout - re-send the last message")
     return
 
   time_start = time.time()
   time_now = time.time()
   while time_now < time_start + 60:
     if state[key]['seq'] == my_seq:
-      await asyncio.sleep(1)
+      await asyncio.sleep(0.1)
       time_now = time.time()
     else:
-      print(f"[{key}] seq '{my_seq}' passed")
+      print(f"[{key}] got answer '{my_seq}'")
       return
 
-  print(f"[{key}] answer wait timeout")
   state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
-  if state[key].get('last_send_size') is not None:
-    state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
-  request_send_data(group, device, state[key]['chunk_size'])
+  print(f"[{key}] answer wait timeout - re-send the last message with the new seq '{state[key]['seq']}'")
+  message_with_new_seq = bytearray(state[key]['last_message'])
+  message_with_new_seq[1] = state[key]['seq']
+  post_command(group, device, message_with_new_seq)
 
 def on_command_posted(future):
   if future.exception() is None:
@@ -114,18 +112,18 @@ def on_command_posted(future):
         state[key]['f_cnt'] = message['fCnt']
         
         asyncio.run_coroutine_threadsafe(periodic_check_downlink_status(key), event_loop)
-
         return
   else:
     print(f"Future({future}) exception:", future.exception())
 
-def request_md5_request(group, device):
+def post_command(group, device, message):
   key = f"{group}:{device}"
-  request = bytes([MESSAGE_TYPE_MD5, state[key]['seq'], state[key]['session']])
+  state[key]['last_message'] = bytearray(message)
+  state[key]['f_cnt'] = None
   future = asyncio.run_coroutine_threadsafe(pyiotown.post.async_command(http_url,
                                                                         state[key]['token'],
                                                                         device,
-                                                                        bytes(request),
+                                                                        bytes(message),
                                                                         {
                                                                           'f_port': 67,
                                                                           'confirmed': True
@@ -133,6 +131,12 @@ def request_md5_request(group, device):
                                                                         verify=False), event_loop)
   state[key]['future'] = future
   future.add_done_callback(on_command_posted)
+  return future
+  
+def request_md5_request(group, device):
+  key = f"{group}:{device}"
+  request = bytes([MESSAGE_TYPE_MD5, state[key]['seq'], state[key]['session']])
+  future = post_command(group, device, request)
   print(f"[{key}] Try to request MD5 (future:{future})")
   
 def request_send_data(group, device, size=50):
@@ -144,24 +148,25 @@ def request_send_data(group, device, size=50):
 
   if len(data) > 0:
     request += data
-    state[key]['last_send_size'] = size
-
-    future = asyncio.run_coroutine_threadsafe(pyiotown.post.async_command(http_url,
-                                                                          state[key]['token'],
-                                                                          device,
-                                                                          bytes(request),
-                                                                          {
-                                                                            'f_port': 67,
-                                                                            'confirmed': True
-                                                                          },
-                                                                          verify=False), event_loop)
-    state[key]['future'] = future
-    future.add_done_callback(on_command_posted)
-    print(f"[{key}] Try to send {state[key]['last_send_size']} bytes from offset {offset} (future:{future})")
+    future = post_command(group, device, request)
+    print(f"[{key}] Try to send {size} bytes from offset {offset} (future:{future})")
   else:
     print(f"[{key}] EOF")
-    state[key]['last_send_data'] = 0
     request_md5_request(group, device)
+
+def request_firmware_update(group, device):
+  key = f"{group}:{device}"
+  request = bytes([MESSAGE_TYPE_FWUPDATE, state[key]['seq'], state[key]['session']])
+  state[key]['last_message'] = bytearray(request)
+  future = post_command(group, device, request)
+  print(f"[{key}] Try to request firmware update (future:{future})")
+
+def request_delete_data(group, device):
+  key = f"{group}:{device}"
+  request = bytes([MESSAGE_TYPE_DELETE, state[key]['seq'], state[key]['session']])
+  state[key]['last_message'] = bytearray(request)
+  future = post_command(group, device, request)
+  print(f"[{key}] Try to request delete (future:{future})")
 
 def on_message(client, userdata, message):
   try:
@@ -184,22 +189,27 @@ def on_message(client, userdata, message):
   if message_type == 'boot':
     print(message.topic, m)
   elif message_type == 'ack':
+    # print(message.topic, m)
     if state[key]['f_cnt'] == m['fCnt']:
       state[key]['f_cnt'] = None
       if m['errorMsg'] != '':
         print(f"[{key}] Error on LoRa: {m['errorMsg']}")
-        if state[key].get('last_send_size') is not None:
-          state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
-        offset = state[key]['image'].tell()
+        
+        state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
+        message_with_new_seq = bytearray(state[key]['last_message'])
+        message_with_new_seq[1] = state[key]['seq']
+
         if m['errorMsg'] == 'Oversized Payload':
-          state[key]['chunk_size'] -= 10
+          dec_size = 1
+          state[key]['chunk_size'] -= dec_size
           print(f"Decreased chunk_size to {state[key]['chunk_size']}")
           if state[key]['chunk_size'] <= 0:
             sys.exit(5)
-            
-          request_send_data(group_id, device, state[key]['chunk_size'])
+
+          state[key]['image'].seek(-dec_size, os.SEEK_CUR)
+          post_command(group_id, device, message_with_new_seq[:-dec_size])
         elif m['errorMsg'] == 'No ACK':
-          request_send_data(group_id, device, state[key]['chunk_size'])
+          post_command(group_id, device, message_with_new_seq)
         else:
           print(f"[{key}] unhandled error")
           sys.exit(6)
@@ -232,34 +242,42 @@ def on_message(client, userdata, message):
           total_size = os.fstat(state[key]['image'].fileno()).st_size
           current_pos = state[key]['image'].tell()
           print(f"[{key}] send data success. {current_pos / total_size * 100:.2f}% ({current_pos}/{total_size})")
+          request_send_data(group_id, device, state[key]['chunk_size'])
         else:
           print(f"[{key}] send data fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
-          if state[key].get('last_send_size') is not None:
-            state[key]['image'].seek(-state[key]['last_send_size'], os.SEEK_CUR)
-        request_send_data(group_id, device, state[key]['chunk_size'])
+          message_with_new_seq = bytearray(state[key]['last_message'])
+          message_with_new_seq[1] = state[key]['seq']
+          post_command(group_id, device, message_with_new_seq)
+
       elif answer_type == MESSAGE_TYPE_DELETE:
         if answer_result == RESULT_OK:
-          request_send_data(group_id, device, 300)
+          request_send_data(group_id, device, state[key]['chunk_size'])
         else:
           print(f"[{key}] delete fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
           sys.exit(2)
+
       elif answer_type == MESSAGE_TYPE_MD5:
         if answer_result == RESULT_OK:
           if len(raw) != 20:
             print(f"[{key}] MD5 response must be 20 byte but {len(raw)}")
           else:
             md5_response = raw[4:]
-            print(f"[{key}] MD5 response {md5_response.hex()}")
 
             state[key]['image'].seek(0)
             md5 = hashlib.md5()
             for chunk in iter(lambda: state[key]['image'].read(2048), b''):
-              # update the hash object
               md5.update(chunk)
-            md5_expected = md5.hexdigest()
-            print(f"[{key}] MD5 expected: {md5_expected}")
+            md5_expected = md5.digest()
+            if md5_response == md5_expected:
+              print(f"[{key}] MD5 matched: {md5_expected.hex()}")
+              request_firmware_update(group_id, device)
+            else:
+              print(f"[{key}] MD5 {md5_expected.hex()} expected but {md5_response.hex()}")
         else:
           print(f"[{key}] MD5 fail returned: {answer_result}")
+      elif answer_type == MESSAGE_TYPE_FWUPDATE:
+        print(f"[{key}] firmware update response: {answer_result}")
+        sys.exit(0)
     
 def main():
   parser = argparse.ArgumentParser(description=f"Nalja Firmware Update Over The Air (FUOTA) tool for devices in IOTOWN {VersionInfo('nola_tools').release_string()}")
@@ -320,25 +338,12 @@ def main():
     'session': 0 if args.region is None else int(args.region),
     'image': args.image[0],
     'f_cnt': None,
-    'chunk_size': 200
-  }
-  
-  command = bytes([ MESSAGE_TYPE_DELETE, seq, 0x00 ])
-  lorawan_param = {
-    'f_port': 67,
-    'confirmed': True
+    'chunk_size': 240,
+    'last_message': None
   }
 
-  future = asyncio.run_coroutine_threadsafe(pyiotown.post.async_command(http_url,
-                                                                        token,
-                                                                        device,
-                                                                        command,
-                                                                        lorawan_param,
-                                                                        verify=False), event_loop)
-  state[key]['future'] = future
-  print(f"[{key}] Initiating by requesting delete session '{state[key]['session']}' ({future})")
+  request_delete_data(args.group, device)
 
-  future.add_done_callback(on_command_posted)
   event_loop.run_forever()
   
 if __name__ == "__main__":
