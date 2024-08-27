@@ -286,6 +286,7 @@ def main():
   parser.add_argument('device', help='A device ID to update its firmware')
   parser.add_argument('image', type=argparse.FileType('rb'), nargs=1, help='A image file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='file')
   parser.add_argument('--region', help='A device-specific region name where the file is flashed on (e.g., main, bootloader, model, 0, 1, 2, ...)', metavar='region')
+  parser.add_argument('--chunksize', help='The initial chunk size')
   args = parser.parse_args()
   
   url_parsed = urlparse(args.iotown)
@@ -338,7 +339,7 @@ def main():
     'session': 0 if args.region is None else int(args.region),
     'image': args.image[0],
     'f_cnt': None,
-    'chunk_size': 240,
+    'chunk_size': 240 if args.chunksize is None else int(args.chunksize),
     'last_message': None
   }
 

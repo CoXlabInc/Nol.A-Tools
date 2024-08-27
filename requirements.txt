@@ -2,4 +2,4 @@ pbr
 setuptools
 pyserial
 GitPython
-pyiotown>=0.5.6.dev2
+pyiotown>=0.6.1.dev1
