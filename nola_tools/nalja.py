@@ -67,7 +67,7 @@ async def periodic_check_downlink_status(key):
 
   time_start = time.time()
   time_now = time.time()
-  while result_notified == False and time_now < time_start + 20:
+  while result_notified == False and time_now < time_start + 10:
     if state[key]['f_cnt'] == my_fcnt:
       await asyncio.sleep(0.1)
       time_now = time.time()
@@ -84,7 +84,7 @@ async def periodic_check_downlink_status(key):
 
   time_start = time.time()
   time_now = time.time()
-  while time_now < time_start + 60:
+  while time_now < time_start + 10:
     if state[key]['seq'] == my_seq:
       await asyncio.sleep(0.1)
       time_now = time.time()
@@ -106,6 +106,7 @@ def on_command_posted(future):
         print(f"[{key}] posting command result:", result)
         state[key]['future'] = None
         message = result[1]
+        print(message)
         if result[0] == False or message.get('fCnt') is None:
           print(f"[{key}] command API fail, offset:{state[key]['image'].tell()}")
           sys.exit(4)
@@ -202,7 +203,7 @@ def on_message(client, userdata, message):
         if m['errorMsg'] == 'Oversized Payload':
           dec_size = 1
           state[key]['chunk_size'] -= dec_size
-          print(f"Decreased chunk_size to {state[key]['chunk_size']}")
+          print(f"[{key}] Decreased chunk_size to {state[key]['chunk_size']}")
           if state[key]['chunk_size'] <= 0:
             sys.exit(5)
 
@@ -232,7 +233,7 @@ def on_message(client, userdata, message):
       answer_result = raw[3]
 
       if answer_seq != state[key]['seq']:
-        print(f"not my seq (expected {state[key]['seq']} but {answer_seq})")
+        print(f"[{key}] not my seq (expected {state[key]['seq']} but {answer_seq})")
         return
 
       state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
@@ -324,7 +325,7 @@ def main():
 
   def message_loop(client):
     client.loop_forever()
-  message_thread = threading.Thread(target=message_loop, args=[client])
+  message_thread = threading.Thread(target=message_loop, args=[client], daemon=True)
   message_thread.start()
 
   global event_loop
