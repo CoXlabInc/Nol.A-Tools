@@ -73,13 +73,15 @@ async def periodic_check_downlink_status(key):
       time_now = time.time()
     else:
       # result notified
-      print(f"[{key}] fCnt '{my_fcnt}' result notified")
       result_notified = True
       break
 
-  if result_notified == False:
+  if result_notified == False or state[key]['f_cnt'] is None:
     post_command(group, device, state[key]['last_message'])
     print(f"[{key}] ack wait timeout - re-send the last message")
+    return
+  elif state[key] != my_fcnt:
+    print(f"[{key}] cancel FCnt {my_fcnt}")
     return
 
   time_start = time.time()
@@ -92,11 +94,8 @@ async def periodic_check_downlink_status(key):
       print(f"[{key}] got answer '{my_seq}'")
       return
 
-  state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
-  print(f"[{key}] answer wait timeout - re-send the last message with the new seq '{state[key]['seq']}'")
-  message_with_new_seq = bytearray(state[key]['last_message'])
-  message_with_new_seq[1] = state[key]['seq']
-  post_command(group, device, message_with_new_seq)
+  print(f"[{key}] answer wait timeout - re-send the last message '{state[key]['seq']}'")
+  post_command(group, device, state[key]['last_message'])
 
 def on_command_posted(future):
   if future.exception() is None:
@@ -109,9 +108,12 @@ def on_command_posted(future):
         print(message)
         if result[0] == False or message.get('fCnt') is None:
           print(f"[{key}] command API fail, offset:{state[key]['image'].tell()}")
-          sys.exit(4)
-        state[key]['f_cnt'] = message['fCnt']
+          
+          group, device = key.split(':')
+          post_command(group, device, state[key]['last_message'])
+          return
         
+        state[key]['f_cnt'] = message['fCnt']
         asyncio.run_coroutine_threadsafe(periodic_check_downlink_status(key), event_loop)
         return
   else:
@@ -194,25 +196,23 @@ def on_message(client, userdata, message):
     if state[key]['f_cnt'] == m['fCnt']:
       state[key]['f_cnt'] = None
       if m['errorMsg'] != '':
-        print(f"[{key}] Error on LoRa: {m['errorMsg']}")
-        
-        state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
-        message_with_new_seq = bytearray(state[key]['last_message'])
-        message_with_new_seq[1] = state[key]['seq']
-
         if m['errorMsg'] == 'Oversized Payload':
           dec_size = 1
           state[key]['chunk_size'] -= dec_size
-          print(f"[{key}] Decreased chunk_size to {state[key]['chunk_size']}")
+          print(f"[{key}] Over sized payload -> Decreased chunk_size to {state[key]['chunk_size']}")
           if state[key]['chunk_size'] <= 0:
             sys.exit(5)
 
           state[key]['image'].seek(-dec_size, os.SEEK_CUR)
+          state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
+          message_with_new_seq = bytearray(state[key]['last_message'])
+          message_with_new_seq[1] = state[key]['seq']
           post_command(group_id, device, message_with_new_seq[:-dec_size])
         elif m['errorMsg'] == 'No ACK':
-          post_command(group_id, device, message_with_new_seq)
+          print(f"[{key}] No Ack")
+          #post_command(group_id, device, state[key]['last_message'])
         else:
-          print(f"[{key}] unhandled error")
+          print(f"[{key}] unhandled error: {m['errorMsg']}")
           sys.exit(6)
   elif message_type == 'data':
     if m.get('data') is not None and m['data'].get('fPort') == 67:
@@ -278,8 +278,9 @@ def on_message(client, userdata, message):
           print(f"[{key}] MD5 fail returned: {answer_result}")
       elif answer_type == MESSAGE_TYPE_FWUPDATE:
         print(f"[{key}] firmware update response: {answer_result}")
+        state[key]['seq'] = -1
         sys.exit(0)
-    
+
 def main():
   parser = argparse.ArgumentParser(description=f"Nalja Firmware Update Over The Air (FUOTA) tool for devices in IOTOWN {VersionInfo('nola_tools').release_string()}")
   parser.add_argument('iotown', help='An IOTOWN MQTT URL to connect (e.g., mqtts://{username}:{token}@town.coxlab.kr)')
