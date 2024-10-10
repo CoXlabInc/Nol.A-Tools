@@ -316,7 +316,7 @@ def main():
 
   global http_url
   http_url = url_parsed._replace(scheme='https', netloc=iotown_netloc).geturl()
-  success, result = pyiotown.get.node(http_url, token, device, group_id=group, verify=False)
+  success, result = pyiotown.get.node(http_url, token, device, group_id=args.group, verify=False)
 
   if not success:
     print(f"Getting information of the device '{device}' failed: {result}", file=sys.stderr)
