@@ -316,10 +316,10 @@ def main():
 
   global http_url
   http_url = url_parsed._replace(scheme='https', netloc=iotown_netloc).geturl()
-  try:
-    result = pyiotown.get.node(http_url, token, device, group_id=group, verify=False)
-  except:
-    print(f"Getting information of the device '{device}' failed", file=sys.stderr)
+  success, result = pyiotown.get.node(http_url, token, device, group_id=group, verify=False)
+
+  if not success:
+    print(f"Getting information of the device '{device}' failed: {result}", file=sys.stderr)
     return 1
 
   client.subscribe([(f"iotown/rx/{args.group}/device/{device}/ack", 2),
