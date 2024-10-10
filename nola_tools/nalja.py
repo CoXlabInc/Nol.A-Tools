@@ -49,6 +49,7 @@ async def periodic_check_downlink_status(key):
       success, response = await pyiotown.get.async_command(http_url,
                                                            state[key]['token'],
                                                            device,
+                                                           group_id=group,
                                                            verify=False)
     except Exception as e:
       print(e)
@@ -131,6 +132,7 @@ def post_command(group, device, message):
                                                                           'f_port': 67,
                                                                           'confirmed': True
                                                                         },
+                                                                        group_id=group,
                                                                         verify=False), event_loop)
   state[key]['future'] = future
   future.add_done_callback(on_command_posted)
@@ -315,7 +317,7 @@ def main():
   global http_url
   http_url = url_parsed._replace(scheme='https', netloc=iotown_netloc).geturl()
   try:
-    result = pyiotown.get.node(http_url, token, device, verify=False)
+    result = pyiotown.get.node(http_url, token, device, group_id=group, verify=False)
   except:
     print(f"Getting information of the device '{device}' failed", file=sys.stderr)
     return 1
