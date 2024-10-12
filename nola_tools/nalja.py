@@ -38,12 +38,16 @@ def on_connect(client, userdata, flags, reason_code, properties):
   else:
     print(f"Connect OK! Subscribe Start")
 
+def percentage(key):
+  total_size = os.fstat(state[key]['image'].fileno()).st_size
+  current_pos = state[key]['image'].tell()
+  return current_pos / total_size * 100
+
 async def periodic_check_downlink_status(key):
   group, device = key.split(':')
   my_fcnt = state[key]['f_cnt']
   my_seq = state[key]['seq']
   
-  result_notified = False
   while my_fcnt == state[key]['f_cnt'] and my_seq == state[key]['seq']:
     try:
       success, response = await pyiotown.get.async_command(http_url,
@@ -59,7 +63,7 @@ async def periodic_check_downlink_status(key):
       if c.get('fCnt') == my_fcnt:
         sent = False
         break
-    print(f"[{key}] downlink status for fCnt '{my_fcnt}', seq '{my_seq}': {response} => {'sent' if sent else 'not sent'}")
+    print(f"[{key} {percentage(key):.2f}%] downlink status for fCnt '{my_fcnt}', seq '{my_seq}': {response} => {'sent' if sent else 'not sent'}")
     if sent:
       break
     else:
@@ -68,21 +72,23 @@ async def periodic_check_downlink_status(key):
 
   time_start = time.time()
   time_now = time.time()
-  while result_notified == False and time_now < time_start + 10:
-    if state[key]['f_cnt'] == my_fcnt:
-      await asyncio.sleep(0.1)
-      time_now = time.time()
-    else:
-      # result notified
-      result_notified = True
-      break
+  while state[key]['f_cnt'] == my_fcnt and time_now < time_start + 10:
+    await asyncio.sleep(0.1)
+    time_now = time.time()
 
-  if result_notified == False or state[key]['f_cnt'] is None:
+  if state[key]['f_cnt'] == my_fcnt:
     post_command(group, device, state[key]['last_message'])
-    print(f"[{key}] ack wait timeout - re-send the last message")
+    print(f"[{key} {percentage(key):.2f}%] ack wait timeout - re-send the last message")
+  elif state[key]['f_cnt'] == 'no ack':
+    post_command(group, device, state[key]['last_message'])
+    print(f"[{key} {percentage(key):.2f}%] no ack received - re-send the last message")
+  elif state[key]['f_cnt'] == 'ack':
+    if state[key]['last_message'][0] == MESSAGE_TYPE_FWUPDATE:
+      print(f"[{key} {percentage(key):.2f}%] Firmware update request is sent. Check the device.")
+      sys.exit(0)
     return
   elif state[key] != my_fcnt:
-    print(f"[{key}] cancel FCnt {my_fcnt}")
+    print(f"[{key} {percentage(key):.2f}%] cancel FCnt {my_fcnt}")
     return
 
   time_start = time.time()
@@ -92,10 +98,10 @@ async def periodic_check_downlink_status(key):
       await asyncio.sleep(0.1)
       time_now = time.time()
     else:
-      print(f"[{key}] got answer '{my_seq}'")
+      print(f"[{key} {percentage(key):.2f}%] got answer '{my_seq}'")
       return
 
-  print(f"[{key}] answer wait timeout - re-send the last message '{state[key]['seq']}'")
+  print(f"[{key} {percentage(key):.2f}%] answer wait timeout - re-send the last message '{state[key]['seq']}'")
   post_command(group, device, state[key]['last_message'])
 
 def on_command_posted(future):
@@ -103,12 +109,12 @@ def on_command_posted(future):
     for key in state.keys():
       if state[key]['future'] == future:
         result = future.result()
-        print(f"[{key}] posting command result:", result)
+        print(f"[{key} {percentage(key):.2f}%] posting command result:", result)
         state[key]['future'] = None
         message = result[1]
         print(message)
         if result[0] == False or message.get('fCnt') is None:
-          print(f"[{key}] command API fail, offset:{state[key]['image'].tell()}")
+          print(f"[{key} {percentage(key):.2f}%] command API fail, offset:{state[key]['image'].tell()}")
           
           group, device = key.split(':')
           post_command(group, device, state[key]['last_message'])
@@ -142,7 +148,7 @@ def request_md5_request(group, device):
   key = f"{group}:{device}"
   request = bytes([MESSAGE_TYPE_MD5, state[key]['seq'], state[key]['session']])
   future = post_command(group, device, request)
-  print(f"[{key}] Try to request MD5 (future:{future})")
+  print(f"[{key} {percentage(key):.2f}%] Try to request MD5 (future:{future})")
   
 def request_send_data(group, device, size=50):
   key = f"{group}:{device}"
@@ -154,9 +160,9 @@ def request_send_data(group, device, size=50):
   if len(data) > 0:
     request += data
     future = post_command(group, device, request)
-    print(f"[{key}] Try to send {size} bytes from offset {offset} (future:{future})")
+    print(f"[{key} {percentage(key):.2f}%] Try to send {size} bytes from offset {offset} (future:{future})")
   else:
-    print(f"[{key}] EOF")
+    print(f"[{key} {percentage(key):.2f}%] EOF")
     request_md5_request(group, device)
 
 def request_firmware_update(group, device):
@@ -164,14 +170,14 @@ def request_firmware_update(group, device):
   request = bytes([MESSAGE_TYPE_FWUPDATE, state[key]['seq'], state[key]['session']])
   state[key]['last_message'] = bytearray(request)
   future = post_command(group, device, request)
-  print(f"[{key}] Try to request firmware update (future:{future})")
+  print(f"[{key} {percentage(key):.2f}%] Try to request firmware update (future:{future})")
 
 def request_delete_data(group, device):
   key = f"{group}:{device}"
   request = bytes([MESSAGE_TYPE_DELETE, state[key]['seq'], state[key]['session']])
   state[key]['last_message'] = bytearray(request)
   future = post_command(group, device, request)
-  print(f"[{key}] Try to request delete (future:{future})")
+  print(f"[{key} {percentage(key):.2f}%] Try to request delete (future:{future})")
 
 def on_message(client, userdata, message):
   try:
@@ -197,11 +203,13 @@ def on_message(client, userdata, message):
     # print(message.topic, m)
     if state[key]['f_cnt'] == m['fCnt']:
       state[key]['f_cnt'] = None
-      if m['errorMsg'] != '':
+      if m['errorMsg'] == '':
+        state[key]['f_cnt'] = 'ack'
+      else:
         if m['errorMsg'] == 'Oversized Payload':
           dec_size = 1
           state[key]['chunk_size'] -= dec_size
-          print(f"[{key}] Over sized payload -> Decreased chunk_size to {state[key]['chunk_size']}")
+          print(f"[{key} {percentage(key):.2f}%] Over sized payload -> Decreased chunk_size to {state[key]['chunk_size']}")
           if state[key]['chunk_size'] <= 0:
             sys.exit(5)
 
@@ -211,10 +219,9 @@ def on_message(client, userdata, message):
           message_with_new_seq[1] = state[key]['seq']
           post_command(group_id, device, message_with_new_seq[:-dec_size])
         elif m['errorMsg'] == 'No ACK':
-          print(f"[{key}] No Ack")
-          #post_command(group_id, device, state[key]['last_message'])
+          state[key]['f_cnt'] = 'no ack'
         else:
-          print(f"[{key}] unhandled error: {m['errorMsg']}")
+          print(f"[{key} {percentage(key):.2f}%] unhandled error: {m['errorMsg']}")
           sys.exit(6)
   elif message_type == 'data':
     if m.get('data') is not None and m['data'].get('fPort') == 67:
@@ -226,7 +233,7 @@ def on_message(client, userdata, message):
         print(f"Invalid or no raw data:\n\t{m}\n\t{m['data'].get('raw')}")
         return
 
-      print(f"[{key}] Answer {raw.hex()}")
+      print(f"[{key} {percentage(key):.2f}%] Answer {raw.hex()}")
       if len(raw) < 4:
         return
       answer_type = raw[0]
@@ -235,7 +242,7 @@ def on_message(client, userdata, message):
       answer_result = raw[3]
 
       if answer_seq != state[key]['seq']:
-        print(f"[{key}] not my seq (expected {state[key]['seq']} but {answer_seq})")
+        print(f"[{key} {percentage(key):.2f}%] not my seq (expected {state[key]['seq']} but {answer_seq})")
         return
 
       state[key]['seq'] = (state[key]['seq'] + 1) & 0xFF
@@ -244,10 +251,10 @@ def on_message(client, userdata, message):
         if answer_result in [ RESULT_OK, RESULT_ERROR_DUPLICATE_MESSAGE ]:
           total_size = os.fstat(state[key]['image'].fileno()).st_size
           current_pos = state[key]['image'].tell()
-          print(f"[{key}] send data success. {current_pos / total_size * 100:.2f}% ({current_pos}/{total_size})")
+          print(f"[{key} {percentage(key):.2f}%] send data success. ({current_pos}/{total_size})")
           request_send_data(group_id, device, state[key]['chunk_size'])
         else:
-          print(f"[{key}] send data fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
+          print(f"[{key} {percentage(key):.2f}%] send data fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
           message_with_new_seq = bytearray(state[key]['last_message'])
           message_with_new_seq[1] = state[key]['seq']
           post_command(group_id, device, message_with_new_seq)
@@ -256,13 +263,13 @@ def on_message(client, userdata, message):
         if answer_result == RESULT_OK:
           request_send_data(group_id, device, state[key]['chunk_size'])
         else:
-          print(f"[{key}] delete fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
+          print(f"[{key} {percentage(key):.2f}%] delete fail returned: {answer_result}, offset:{state[key]['image'].tell()}")
           sys.exit(2)
 
       elif answer_type == MESSAGE_TYPE_MD5:
         if answer_result == RESULT_OK:
           if len(raw) != 20:
-            print(f"[{key}] MD5 response must be 20 byte but {len(raw)}")
+            print(f"[{key} {percentage(key):.2f}%] MD5 response must be 20 byte but {len(raw)}")
           else:
             md5_response = raw[4:]
 
@@ -272,14 +279,14 @@ def on_message(client, userdata, message):
               md5.update(chunk)
             md5_expected = md5.digest()
             if md5_response == md5_expected:
-              print(f"[{key}] MD5 matched: {md5_expected.hex()}")
+              print(f"[{key} {percentage(key):.2f}%] MD5 matched: {md5_expected.hex()}")
               request_firmware_update(group_id, device)
             else:
-              print(f"[{key}] MD5 {md5_expected.hex()} expected but {md5_response.hex()}")
+              print(f"[{key} {percentage(key):.2f}%] MD5 {md5_expected.hex()} expected but {md5_response.hex()}")
         else:
-          print(f"[{key}] MD5 fail returned: {answer_result}")
+          print(f"[{key} {percentage(key):.2f}%] MD5 fail returned: {answer_result}")
       elif answer_type == MESSAGE_TYPE_FWUPDATE:
-        print(f"[{key}] firmware update response: {answer_result}")
+        print(f"[{key} {percentage(key):.2f}%] firmware update response: {answer_result}")
         state[key]['seq'] = -1
         sys.exit(0)
 
