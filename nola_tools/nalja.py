@@ -88,9 +88,8 @@ async def periodic_check_downlink_status(key):
     print(f"[{TAG(key)}] no ack received - re-send the last message")
   elif state[key]['f_cnt'] == 'ack':
     if state[key]['last_message'][0] == MESSAGE_TYPE_FWUPDATE:
-      print(f"[{TAG(key)}] Firmware update request is sent. Check the device.")
-      sys.exit(0)
-    return
+      return # no need to wait for the answer.
+    print(f"[{TAG(key)}] ack received - wait for the answer")
   elif state[key] != my_fcnt:
     print(f"[{TAG(key)}] cancel FCnt {my_fcnt}")
     return
@@ -209,6 +208,9 @@ def on_message(client, userdata, message):
       state[key]['f_cnt'] = None
       if m['errorMsg'] == '':
         state[key]['f_cnt'] = 'ack'
+        if state[key]['last_message'][0] == MESSAGE_TYPE_FWUPDATE:
+          print(f"[{TAG(key)}] Firmware update request is sent. Check the device.")
+          sys.exit(0)
       else:
         if m['errorMsg'] == 'Oversized Payload':
           dec_size = 1
@@ -302,6 +304,7 @@ def main():
   parser.add_argument('image', type=argparse.FileType('rb'), nargs=1, help='A image file to flash (e.g., output.bin, ./build/test.bin, C:\Temp\hello.bin)', metavar='file')
   parser.add_argument('--region', help='A device-specific region name where the file is flashed on (e.g., main, bootloader, model, 0, 1, 2, ...)', metavar='region')
   parser.add_argument('--chunksize', help='The initial chunk size')
+  parser.add_argument('--offset', help='The offset of the image. If it is set, the FUOTA will begin transmitting the image with the offset without initial remove.')
   args = parser.parse_args()
   
   url_parsed = urlparse(args.iotown)
@@ -358,8 +361,18 @@ def main():
     'last_message': None
   }
 
-  request_delete_data(args.group, device)
+  offset = 0
+  try:
+    offset = int(args.offset)
+  except:
+    pass
 
+  if offset == 0:
+    request_delete_data(args.group, device)
+  else:
+    state[key]['image'].seek(offset)
+    request_send_data(args.group, device, state[key]['chunk_size'])
+    
   event_loop.run_forever()
   
 if __name__ == "__main__":
