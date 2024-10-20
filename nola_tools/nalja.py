@@ -340,11 +340,6 @@ def main():
                     (f"iotown/rx/{args.group}/device/{device}/boot", 2),
                     (f"iotown/rx/{args.group}/device/{device}/data", 2)])
 
-  def message_loop(client):
-    client.loop_forever()
-  message_thread = threading.Thread(target=message_loop, args=[client], daemon=True)
-  message_thread.start()
-
   global event_loop
   event_loop = asyncio.new_event_loop()
 
@@ -373,7 +368,11 @@ def main():
     state[key]['image'].seek(offset)
     request_send_data(args.group, device, state[key]['chunk_size'])
     
-  event_loop.run_forever()
+  def event_loop_thread(client):
+    event_loop.run_forever()
+  threading.Thread(target=event_loop_thread, args=[client], daemon=True).start()
   
+  client.loop_forever()
+
 if __name__ == "__main__":
   main()
