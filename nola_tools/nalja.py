@@ -74,11 +74,10 @@ async def periodic_check_downlink_status(key):
       await asyncio.sleep(1)
       continue
 
-  time_start = time.time()
-  time_now = time.time()
-  while state[key]['f_cnt'] == my_fcnt and time_now < time_start + 10:
+  print(f"[{TAG(key)}] wait for ack...")
+    
+  while state[key]['f_cnt'] == my_fcnt:
     await asyncio.sleep(0.1)
-    time_now = time.time()
 
   if state[key]['f_cnt'] == my_fcnt:
     post_command(group, device, state[key]['last_message'])
