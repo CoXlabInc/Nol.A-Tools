@@ -75,16 +75,16 @@ def get_available_versions(repo_dir):
 def get_latest_version(A, B):
     a = A.split('.')
     b = B.split('.')
-    if a[0] == b[0]:
-        if a[1] == b[1]:
-            if a[2] == b[2]:
+    if int(a[0]) == int(b[0]):
+        if int(a[1]) == int(b[1]):
+            if int(a[2]) == int(b[2]):
                 return None
             else:
-                return A if (a[2] > b[2]) else B
+                return A if (int(a[2]) > int(b[2])) else B
         else:
-            return A if (a[1] > b[1]) else B
+            return A if (int(a[1]) > int(b[1])) else B
     else:
-        return A if (a[0] > b[0]) else B
+        return A if (int(a[0]) > int(b[0])) else B
 
 def checkout(repo_dir, version=None):
     assert os.path.exists(repo_dir), "'login' is required."
