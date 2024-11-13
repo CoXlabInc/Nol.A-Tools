@@ -79,10 +79,7 @@ async def periodic_check_downlink_status(key):
   while state[key]['f_cnt'] == my_fcnt:
     await asyncio.sleep(0.1)
 
-  if state[key]['f_cnt'] == my_fcnt:
-    post_command(group, device, state[key]['last_message'])
-    print(f"[{TAG(key)}] ack wait timeout - re-send the last message")
-  elif state[key]['f_cnt'] == 'no ack':
+  if state[key]['f_cnt'] == 'no ack':
     post_command(group, device, state[key]['last_message'])
     print(f"[{TAG(key)}] no ack received - re-send the last message")
   elif state[key]['f_cnt'] == 'ack':
