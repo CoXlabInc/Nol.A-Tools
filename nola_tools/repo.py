@@ -2,6 +2,7 @@ import sys
 import os
 import shutil
 import git
+from functools import cmp_to_key
 
 homedir = os.path.join(os.path.expanduser('~'), '.nola')
 env = {
@@ -70,21 +71,34 @@ def get_available_versions(repo_dir):
     except git.exc.GitCommandError as e:
         return []
     
-    return list(reversed([v.name for v in versions]))
+    return list(reversed(sorted([v.name for v in versions], key=cmp_to_key(cmp_version))))
 
-def get_latest_version(A, B):
+def cmp_version(A, B):
     a = A.split('.')
     b = B.split('.')
-    if int(a[0]) == int(b[0]):
-        if int(a[1]) == int(b[1]):
-            if int(a[2]) == int(b[2]):
-                return None
+
+    for i in range(len(a)):
+        try:
+            a[i] = int(a[i])
+        except:
+            pass
+
+    for i in range(len(b)):
+        try:
+            b[i] = int(b[i])
+        except:
+            pass
+
+    if a[0] == b[0]:
+        if a[1] == b[1]:
+            if a[2] == b[2]:
+                return 0
             else:
-                return A if (int(a[2]) > int(b[2])) else B
+                return 1 if a[2] > b[2] else -1
         else:
-            return A if (int(a[1]) > int(b[1])) else B
+            return 1 if a[1] > b[1] else -1
     else:
-        return A if (int(a[0]) > int(b[0])) else B
+        return 1 if a[0] > b[0] else -1
 
 def checkout(repo_dir, version=None):
     assert os.path.exists(repo_dir), "'login' is required."
@@ -100,15 +114,7 @@ def checkout(repo_dir, version=None):
             print(f"* The version '{version}' is not found.", file=sys.stderr)
             print(f"* Avilable versions: {get_available_versions(repo_dir)}")
             return False
-        
-    latest = None
-    for v in repo.tags:
-        if latest is None:
-            latest = v.name
-        else:
-            new_one = get_latest_version(latest, v.name)
-            if new_one is not None:
-                latest = new_one
+    latest = list(reversed(sorted([v.name for v in repo.tags], key=cmp_to_key(cmp_version))))[0]
 
     print(f"* Checking out the latest version '{latest}'")
     repo.head.reset(f"refs/tags/{latest}", working_tree=True)
