@@ -109,7 +109,7 @@ To use ST-Link as a flashing tool, setting ```stm32cube``` path variable is requ
 
 For macOS, and Linux users,
 ```
-nola path=jlink:{Absolute path to STM32_Programmer_CLI}
+nola path=stlink:{Absolute path to STM32_Programmer_CLI}
 ```
 
 For Windows WSL2 users, the ```STM32_Programmer_CLI.exe``` in the Windows region must be used.
@@ -137,6 +137,14 @@ nola flash=stlink:com3
 
 ### SDK Version
 
+
+#### Update
+
+You can update the SDK version like below:
+```
+nola update
+```
+
 #### Checkout
 
 The current and available SDK version numbers can be retrieved by using ```nola info``` command.
@@ -145,12 +153,9 @@ You can change the SDK version number like below:
 ```
 nola checkout={new version number}
 ```
-
-#### Update
-
-You can update the SDK version like below:
+You can check out the latest version by omitting the version number.
 ```
-nola update
+nola checkout
 ```
 
 ### Path Variables
