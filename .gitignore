@@ -6,3 +6,4 @@
 build
 .eggs
 venv
+nola_tools/_version.py
