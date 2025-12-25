@@ -1,5 +1,0 @@
-pbr
-setuptools
-pyserial
-GitPython
-pyiotown>=0.6.1.dev1

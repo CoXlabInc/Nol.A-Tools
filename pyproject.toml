@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=42", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nola-tools"
+dynamic = ["version"]
+authors = [
+    {name = "COX Co., Ltd.", email = "dev@coxlab.kr"}
+]
+description = "Nol.A-SDK Command Line Interface"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "GitPython",
+    "argparse"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/CoXlabInc/Nol.A-Tools"
+
+[project.scripts]
+nola = "nola_tools:main"
+nolja = "nola_tools.nolja:main"
+nalja = "nola_tools.nalja:main"
+
+[tool.setuptools_scm]
+write_to = "nola_tools/_version.py"

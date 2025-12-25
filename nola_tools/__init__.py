@@ -1,9 +1,9 @@
 all = ('__version__')
 
-from pbr.version import VersionInfo
-
-# Check the PBR version module docs for other options than release_string()
-__version__ = VersionInfo('nola_tools').release_string()
+try:
+    from ._version import version as __version__
+except ImportError:
+    __version__ = "dev"
 
 import argparse
 import sys
