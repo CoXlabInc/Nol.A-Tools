@@ -165,9 +165,9 @@ def main():
     elif args.command.startswith("checkout"):
         if len(args.command) < 9:
             print("* Checking out the latest version...")
-            return checkout(repo_dir)
+            return 0 if checkout(repo_dir) else 1
         elif args.command[8] == "=":
-            return checkout(repo_dir, args.command[9:])
+            return 0 if checkout(repo_dir, args.command[9:]) else 1
         else:
             print("* Use 'checkout=[version]' to specify the version", file=sys.stderr)
             parse.print_help()
@@ -191,11 +191,15 @@ def main():
             print("* Log-in failed. Please 'logout' to clean up.")
             return 1
     elif args.command == "logout":
-        logout()
-        print(f"* Logged out successfully.")
+        if logout():
+            print(f"* Logged out successfully.")
+            return 0
+        else:
+            print(f"* Logout failed.", file=sys.stderr)
+            return 1
 
     elif args.command == "update":
-        return update(repo_dir)
+        return 0 if update(repo_dir) else 1
 
     elif args.command.startswith("path"):
         def print_path_help():

@@ -5,3 +5,4 @@
 /*.egg
 build
 .eggs
+venv

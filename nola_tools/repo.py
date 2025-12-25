@@ -71,23 +71,32 @@ def get_available_versions(repo_dir):
     except git.exc.GitCommandError as e:
         return []
     
-    return list(reversed(sorted([v.name for v in versions], key=cmp_to_key(cmp_version))))
+    version_names = [v.name for v in versions]
+
+    def is_valid(v_str):
+        parts = v_str.lstrip('v').split('.')
+        try:
+            # Check if all parts can be converted to int
+            for p in parts:
+                int(p)
+            return True
+        except ValueError:
+            return False
+
+    valid_versions = [v for v in version_names if is_valid(v)]
+    
+    return list(reversed(sorted(valid_versions, key=cmp_to_key(cmp_version))))
 
 def cmp_version(A, B):
-    a = A.split('.')
-    b = B.split('.')
+    a = A.lstrip('v').split('.')
+    b = B.lstrip('v').split('.')
 
-    for i in range(len(a)):
-        try:
-            a[i] = int(a[i])
-        except:
-            pass
-
-    for i in range(len(b)):
-        try:
-            b[i] = int(b[i])
-        except:
-            pass
+    a = [int(p) for p in a]
+    b = [int(p) for p in b]
+    
+    # Pad with 0s for versions with less than 3 components
+    while len(a) < 3: a.append(0)
+    while len(b) < 3: b.append(0)
 
     if a[0] == b[0]:
         if a[1] == b[1]:
@@ -114,7 +123,7 @@ def checkout(repo_dir, version=None):
             print(f"* The version '{version}' is not found.", file=sys.stderr)
             print(f"* Avilable versions: {get_available_versions(repo_dir)}")
             return False
-    latest = list(reversed(sorted([v.name for v in repo.tags], key=cmp_to_key(cmp_version))))[0]
+    latest = get_available_versions(repo_dir)[0]
 
     print(f"* Checking out the latest version '{latest}'")
     repo.head.reset(f"refs/tags/{latest}", working_tree=True)
@@ -146,3 +155,4 @@ def update(repo_dir):
     if result[0].flags & git.remote.FetchInfo.HEAD_UPTODATE:
         print("* Up to date")
     
+    return True
